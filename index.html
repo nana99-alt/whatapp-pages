@@ -50,7 +50,7 @@
     </nav>
 
     <section id="chatsPage" class="page">
-      <div class="section-heading"><div><h2>Pesan</h2><span id="myNumber">Obrolan terbaru</span></div><button class="round-add" id="newChatBtn">＋</button></div>
+      <div class="section-heading"><div><h2>Pesan</h2><span id="myNumber">ID kontak WhatApp · bukan nomor telepon</span></div><button class="round-add" id="newChatBtn" aria-label="Mulai obrolan baru">＋</button></div>
       <div class="search-box"><span>⌕</span><input id="filterChats" placeholder="Cari nama atau pesan"></div>
       <div class="archive-row">▣　Diarsipkan <span>2</span></div>
       <div id="chatList" class="chat-list"></div>
@@ -80,8 +80,8 @@
         <button class="back-btn" id="backBtn">‹</button>
         <div class="avatar small-avatar" id="activeAvatar">👩🏻</div>
         <div class="chat-person"><b id="activeName">Sarah</b><small id="activeStatus">online</small></div>
-        <button class="icon-btn" id="voiceCallBtn">☎</button>
-        <button class="icon-btn" id="videoCallBtn">▣</button>
+        <button class="icon-btn" id="voiceCallBtn" aria-label="Panggilan suara belum aktif" title="Panggilan belum aktif">☎</button>
+        <button class="icon-btn" id="videoCallBtn" aria-label="Panggilan video belum aktif" title="Panggilan belum aktif">▣</button>
         <button class="icon-btn">⋮</button>
       </div>
       <div class="messages" id="messages">
