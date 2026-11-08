@@ -7,6 +7,7 @@ let realtimeChannel = null;
 let people = [];
 let callMode = "voice";
 let deferredInstallPrompt = null;
+let currentVirtualNumber = null;
 
 const demoPeople = [
   { id: "demo-sarah", name: "Sarah", avatar: "👩🏻", preview: "Aku baik juga 😊", time: "09.42", unread: 2, status: "online", demo: true },
@@ -32,7 +33,7 @@ function renderChats(filter = "") {
   const list = $("chatList");
   list.innerHTML = "";
   const query = filter.toLowerCase();
-  people.filter((p) => `${p.name} ${p.preview || ""}`.toLowerCase().includes(query)).forEach((p) => {
+  people.filter((p) => `${p.name} ${p.virtual_number || ""} ${p.preview || ""}`.toLowerCase().includes(query)).forEach((p) => {
     const row = document.createElement("div");
     row.className = "chat-item";
     row.innerHTML = '<div class="avatar"></div><div class="chat-copy"><div class="chat-line"><b></b><time></time></div><div class="chat-line"><div class="chat-preview"></div></div></div>';
@@ -138,13 +139,24 @@ function endCall() { $("callScreen").classList.add("hidden"); $("mainScreen").cl
 async function ensureProfile() {
   if (!supabase || !currentUser) return;
   const name = currentUser.user_metadata?.display_name || currentUser.email?.split("@")[0] || "Pengguna";
-  await supabase.from("profiles").upsert({ id: currentUser.id, display_name: name }, { onConflict: "id" });
+  const existing = await supabase.from("profiles").select("virtual_number").eq("id", currentUser.id).maybeSingle();
+  let virtual_number = existing.data?.virtual_number;
+  if (!virtual_number) {
+    for (let attempt = 0; attempt < 5 && !virtual_number; attempt += 1) {
+      const candidate = `WA-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const taken = await supabase.from("profiles").select("id").eq("virtual_number", candidate).maybeSingle();
+      if (!taken.data) virtual_number = candidate;
+    }
+  }
+  const saved = await supabase.from("profiles").upsert({ id: currentUser.id, display_name: name, virtual_number }, { onConflict: "id" }).select("virtual_number").single();
+  currentVirtualNumber = saved.data?.virtual_number || virtual_number;
+  if ($("myNumber") && currentVirtualNumber) $("myNumber").textContent = `Nomor Anda: ${currentVirtualNumber}`;
 }
 async function loadPeople() {
   if (!supabase || !currentUser) { people = demoPeople; renderChats(); return; }
-  const { data, error } = await supabase.from("profiles").select("id,display_name,avatar_url").neq("id", currentUser.id).order("display_name").limit(100);
+  const { data, error } = await supabase.from("profiles").select("id,display_name,avatar_url,virtual_number").neq("id", currentUser.id).order("display_name").limit(100);
   if (error) return toast(error.message);
-  people = (data || []).map((p) => ({ id: p.id, name: p.display_name, avatar: p.avatar_url || "🙂", preview: "Mulai percakapan baru", status: "tersedia" }));
+  people = (data || []).map((p) => ({ id: p.id, name: p.display_name, avatar: p.avatar_url || "🙂", virtual_number: p.virtual_number, preview: p.virtual_number || "Mulai percakapan baru", status: "tersedia" }));
   renderChats();
 }
 async function initSupabase() {
@@ -154,11 +166,11 @@ async function initSupabase() {
   const { data: { session } } = await supabase.auth.getSession();
   currentUser = session?.user || null;
   $("authScreen").classList.toggle("hidden", !!currentUser);
-  if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); }
+  if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
   supabase.auth.onAuthStateChange(async (_event, nextSession) => {
     currentUser = nextSession?.user || null;
     $("authScreen").classList.toggle("hidden", !!currentUser);
-    if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); }
+    if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
   });
 }
 async function auth(signup) {
