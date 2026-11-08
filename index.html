@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#075e54">
+  <meta name="description" content="WhatApp — chat pribadi realtime yang cepat dan sederhana.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WhatApp">
+  <title>WhatApp</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand">WhatApp</div>
+    <div class="top-actions">
+      <button class="install-btn hidden" id="installBtn">Pasang</button>
+      <button class="icon-btn" id="searchBtn" aria-label="Cari">⌕</button>
+      <button class="icon-btn" id="menuBtn" aria-label="Menu">⋮</button>
+    </div>
+  </header>
+
+  <section id="authScreen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="logo-mark">W</div>
+      <h1>Selamat datang di WhatApp</h1>
+      <p>Masuk untuk mulai mengobrol.</p>
+      <input id="email" type="email" placeholder="Alamat email">
+      <input id="password" type="password" placeholder="Kata sandi">
+      <button class="primary-btn" id="loginBtn">Masuk</button>
+      <button class="text-btn" id="signupBtn">Buat akun baru</button>
+      <p class="hint" id="authMessage">Demo tampilan tetap bisa dicoba tanpa Supabase.</p>
+      <button class="outline-btn" id="demoBtn">Lihat demo</button>
+    </div>
+  </section>
+
+  <main id="mainScreen">
+    <nav class="tabs">
+      <button class="tab active" data-tab="chats">CHAT</button>
+      <button class="tab" data-tab="updates">PEMBARUAN</button>
+      <button class="tab" data-tab="calls">PANGGILAN</button>
+    </nav>
+
+    <section id="chatsPage" class="page">
+      <div class="section-heading"><div><h2>Pesan</h2><span>Obrolan terbaru</span></div><button class="round-add" id="newChatBtn">＋</button></div>
+      <div class="search-box"><span>⌕</span><input id="filterChats" placeholder="Cari nama atau pesan"></div>
+      <div class="archive-row">▣　Diarsipkan <span>2</span></div>
+      <div id="chatList" class="chat-list"></div>
+      <button class="floating-btn" id="composeBtn">✎</button>
+    </section>
+
+    <section id="updatesPage" class="page hidden">
+      <div class="section-heading"><div><h2>Pembaruan</h2><span>Status teman Anda</span></div></div>
+      <div class="status-card"><div class="status-ring self-ring">＋</div><div><b>Status saya</b><small>Ketuk untuk menambahkan pembaruan</small></div></div>
+      <h3 class="subheading">Terbaru</h3>
+      <div class="status-card"><div class="status-ring"><span>👩🏻</span></div><div><b>Nadia</b><small>Baru saja</small></div></div>
+      <div class="status-card"><div class="status-ring"><span>🧑🏽</span></div><div><b>Rizky</b><small>12 menit yang lalu</small></div></div>
+    </section>
+
+    <section id="callsPage" class="page hidden">
+      <div class="section-heading"><div><h2>Panggilan</h2><span>Riwayat panggilan</span></div><button class="round-add" id="startCallFromList">＋</button></div>
+      <div class="call-history">
+        <div class="history-avatar">👩🏻</div><div class="history-info"><b>Sarah</b><small>↙ Panggilan suara masuk</small></div><span class="history-time">09.42</span><button class="call-icon" data-call="voice">☎</button>
+      </div>
+      <div class="call-history">
+        <div class="history-avatar blue">🧑🏽</div><div class="history-info"><b>Rizky</b><small>↗ Panggilan video keluar</small></div><span class="history-time">Kemarin</span><button class="call-icon" data-call="video">▣</button>
+      </div>
+    </section>
+
+    <section id="conversationPage" class="conversation hidden">
+      <div class="chat-header">
+        <button class="back-btn" id="backBtn">‹</button>
+        <div class="avatar small-avatar" id="activeAvatar">👩🏻</div>
+        <div class="chat-person"><b id="activeName">Sarah</b><small id="activeStatus">online</small></div>
+        <button class="icon-btn" id="voiceCallBtn">☎</button>
+        <button class="icon-btn" id="videoCallBtn">▣</button>
+        <button class="icon-btn">⋮</button>
+      </div>
+      <div class="messages" id="messages">
+        <div class="date-chip">HARI INI</div>
+        <div class="bubble received">Hai! Apa kabar?<span>09.40</span></div>
+        <div class="bubble sent">Baik, kamu bagaimana? <span>09.41　✓✓</span></div>
+        <div class="bubble received">Aku baik juga 😊<span>09.42</span></div>
+      </div>
+      <div class="composer">
+        <button class="attach-btn" id="attachBtn">＋</button>
+        <input id="messageInput" placeholder="Ketik pesan" autocomplete="off">
+        <button class="emoji-btn">☺</button>
+        <button class="send-btn" id="sendBtn">➤</button>
+      </div>
+      <input type="file" id="fileInput" accept="image/*,video/*" hidden>
+    </section>
+  </main>
+
+  <section id="callScreen" class="call-screen hidden">
+    <div class="call-wallpaper"></div>
+    <div class="call-top"><span id="callTypeLabel">Panggilan suara</span><button id="minimizeCall">⌄</button></div>
+    <div class="caller-avatar" id="callerAvatar">👩🏻</div>
+    <h2 id="callerName">Sarah</h2><p id="callStatus">Memanggil...</p>
+    <div class="call-controls">
+      <button class="control-btn muted" id="muteBtn">♩<small>Bisukan</small></button>
+      <button class="control-btn speaker" id="speakerBtn">◖<small>Speaker</small></button>
+      <button class="control-btn video-toggle" id="videoToggle">▣<small>Video</small></button>
+      <button class="control-btn end-call" id="endCallBtn">☎<small>Akhiri</small></button>
+    </div>
+  </section>
+
+  <section id="incomingScreen" class="incoming-screen hidden">
+    <div class="incoming-glow"></div><div class="incoming-avatar">👩🏻</div>
+    <p class="incoming-label">PANGGILAN MASUK</p><h2>Sarah</h2><p id="incomingKind">Panggilan suara WhatApp</p>
+    <div class="incoming-actions"><button id="declineBtn" class="decline">✕<small>Tolak</small></button><button id="acceptBtn" class="accept">☎<small>Terima</small></button></div>
+  </section>
+</div>
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
