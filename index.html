@@ -14,7 +14,7 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script id="supabaseSdk" async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
 </head>
 <body>
@@ -28,13 +28,13 @@
     </div>
   </header>
 
-  <section id="authScreen" class="auth-screen hidden">
+  <section id="authScreen" class="auth-screen">
     <div class="auth-card">
       <div class="logo-mark">W</div>
       <h1>Selamat datang di WhatApp</h1>
       <p>Masuk untuk mulai mengobrol.</p>
-      <input id="email" type="email" placeholder="Alamat email">
-      <input id="password" type="password" placeholder="Kata sandi">
+      <input id="email" type="email" placeholder="Alamat email" autocomplete="email" required>
+      <input id="password" type="password" placeholder="Kata sandi (minimal 6 karakter)" autocomplete="current-password" minlength="6" required>
       <button class="primary-btn" id="loginBtn">Masuk</button>
       <button class="text-btn" id="signupBtn">Buat akun baru</button>
       <p class="hint" id="authMessage">Demo tampilan tetap bisa dicoba tanpa Supabase.</p>
@@ -50,7 +50,7 @@
     </nav>
 
     <section id="chatsPage" class="page">
-      <div class="section-heading"><div><h2>Pesan</h2><span id="myNumber">ID kontak WhatApp · bukan nomor telepon</span></div><button class="round-add" id="newChatBtn" aria-label="Mulai obrolan baru">＋</button></div>
+      <div class="section-heading"><div><h2>Pesan</h2><div class="contact-id-line"><span id="myNumber">ID kontak WhatApp · bukan nomor telepon</span><button id="copyIdBtn" class="copy-id-btn hidden" type="button">Salin ID</button></div></div><button class="round-add" id="newChatBtn" aria-label="Mulai obrolan baru">＋</button></div>
       <div class="search-box"><span>⌕</span><input id="filterChats" placeholder="Cari nama atau pesan"></div>
       <div class="archive-row">▣　Diarsipkan <span>2</span></div>
       <div id="chatList" class="chat-list"></div>
@@ -99,6 +99,16 @@
       <input type="file" id="fileInput" accept="image/*,video/*" hidden>
     </section>
   </main>
+  <dialog id="newChatDialog" class="contact-dialog" aria-labelledby="newChatTitle">
+    <form id="newChatForm">
+      <h2 id="newChatTitle">Mulai obrolan</h2>
+      <p id="newChatHelp">Masukkan ID WhatApp orang yang ingin Anda hubungi.</p>
+      <label for="contactInput" id="contactLabel">ID WhatApp</label>
+      <input id="contactInput" type="text" maxlength="80" autocomplete="off" placeholder="WA-1234-5678" required>
+      <p id="newChatError" class="dialog-error hidden" role="alert"></p>
+      <div class="dialog-actions"><button type="button" id="cancelNewChat" class="dialog-cancel">Batal</button><button type="submit" id="confirmNewChat" class="primary-btn">Mulai chat</button></div>
+    </form>
+  </dialog>
 
   <section id="callScreen" class="call-screen hidden">
     <div class="call-wallpaper"></div>

@@ -7,3 +7,16 @@
 .chat-item:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #59b7a5;outline-offset:2px}
 .empty-state{padding:22px 20px;color:var(--muted);text-align:center;line-height:1.5}
 button:disabled{opacity:.55;cursor:wait}
+.contact-id-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.copy-id-btn{padding:4px 8px;border:1px solid #cce3d9;border-radius:8px;background:#f2faf6;color:var(--green);font-size:10px;font-weight:700}
+.contact-dialog{width:min(92vw,390px);border:0;border-radius:18px;padding:0;box-shadow:0 20px 60px #10291f40;color:var(--ink)}
+.contact-dialog::backdrop{background:#0b211bb3;backdrop-filter:blur(2px)}
+.contact-dialog form{padding:23px 20px 18px}
+.contact-dialog h2{margin:0 0 8px;font-size:20px}
+.contact-dialog p{font-size:13px;color:var(--muted);line-height:1.5}
+.contact-dialog label{display:block;margin:18px 0 6px;font-size:12px;font-weight:700}
+.contact-dialog input{width:100%;padding:13px;border:1px solid #dce7e1;border-radius:10px;font-size:15px;outline-color:var(--green2)}
+.dialog-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:15px}
+.dialog-actions .primary-btn{width:auto;margin:0;padding:11px 15px}
+.dialog-cancel{padding:10px 14px;border-radius:10px;background:#eef3f0;color:#40554c}
+.dialog-error{margin:10px 0 0!important;color:#b42318!important;font-size:12px!important}

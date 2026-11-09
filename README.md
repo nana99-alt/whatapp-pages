@@ -19,6 +19,6 @@ Pilih **Lihat demo** pada layar masuk. Pesan demo yang dikirim disimpan di penyi
 - `profiles`: `id` UUID yang merujuk ke `auth.users`, `display_name`, `avatar_url`, dan `virtual_number` unik.
 - `messages`: `sender_id`, `receiver_id`, `body`, metadata lampiran, waktu kirim, dan status baca.
 
-Aktifkan RLS dengan kebijakan yang membatasi perubahan profil ke pemilik akun dan membaca/mengirim pesan hanya bagi peserta percakapan. Untuk attachment, buat bucket `chat-media` dan atur kebijakannya sebelum mengaktifkan upload. Tambahkan domain publik ke daftar URL redirect Supabase Auth bila konfirmasi email dipakai.
+Aktifkan RLS dengan kebijakan yang membatasi perubahan profil ke pemilik akun dan membaca/mengirim pesan hanya bagi peserta percakapan. Untuk attachment, buat bucket `chat-media` dan atur kebijakannya sebelum mengaktifkan upload. Tambahkan `https://nana99-alt.github.io/whatapp-pages/` ke daftar URL redirect Supabase Auth (redirect email aplikasi kini kembali ke subfolder tersebut). Email perlu diverifikasi sebelum pengguna dapat masuk dan memperoleh ID.
 
 Buka melalui HTTPS lalu pilih **Pasang** atau **Add to Home screen** untuk memasang PWA.
