@@ -22,6 +22,7 @@
     <div class="brand">WhatApp</div>
     <div class="top-actions">
       <button class="install-btn hidden" id="installBtn">Pasang</button>
+      <button class="profile-btn hidden" id="profileBtn" type="button" aria-label="Buka profil saya" title="Profil saya">🙂</button>
       <button class="icon-btn" id="searchBtn" aria-label="Cari">⌕</button>
       <button class="icon-btn" id="menuBtn" aria-label="Menu">⋮</button>
     </div>
@@ -92,6 +93,21 @@
       <input id="contactInput" type="text" maxlength="80" autocomplete="off" placeholder="WA-1234-5678" required>
       <p id="newChatError" class="dialog-error hidden" role="alert"></p>
       <div class="dialog-actions"><button type="button" id="cancelNewChat" class="dialog-cancel">Batal</button><button type="submit" id="confirmNewChat" class="primary-btn">Mulai chat</button></div>
+    </form>
+  </dialog>
+  <dialog id="profileDialog" class="contact-dialog" aria-labelledby="profileTitle">
+    <form id="profileForm">
+      <h2 id="profileTitle">Profil saya</h2>
+      <p>Informasi akun WhatApp Anda.</p>
+      <label for="profileName">Nama tampilan</label>
+      <input id="profileName" type="text" maxlength="40" autocomplete="nickname" required>
+      <label>Email akun</label>
+      <p id="profileEmail" class="profile-readonly"></p>
+      <label>ID WhatApp</label>
+      <div class="profile-id-row"><code id="profileNumber">—</code><button id="copyProfileId" class="copy-id-btn" type="button">Salin</button></div>
+      <p class="hint">ID ini untuk chat dalam aplikasi, bukan nomor telepon.</p>
+      <p id="profileError" class="dialog-error hidden" role="alert"></p>
+      <div class="dialog-actions"><button type="button" id="closeProfile" class="dialog-cancel">Tutup</button><button type="submit" id="saveProfile" class="primary-btn">Simpan nama</button></div>
     </form>
   </dialog>
 

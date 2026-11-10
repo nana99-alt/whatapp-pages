@@ -7,6 +7,7 @@ let realtimeChannel = null;
 let people = [];
 let deferredInstallPrompt = null;
 let currentVirtualNumber = null;
+let currentProfileName = "";
 let supabaseInitStarted = false;
 let supabaseModulePromise = null;
 function toast(message) {
@@ -117,9 +118,10 @@ async function loadSupabaseSdk() {
 }
 async function ensureProfile() {
   if (!supabase || !currentUser) return;
-  const name = currentUser.user_metadata?.display_name || currentUser.email?.split("@")[0] || "Pengguna";
-  const existing = await supabase.from("profiles").select("virtual_number").eq("id", currentUser.id).maybeSingle();
+  const fallbackName = currentUser.user_metadata?.display_name || currentUser.email?.split("@")[0] || "Pengguna";
+  const existing = await supabase.from("profiles").select("display_name,virtual_number").eq("id", currentUser.id).maybeSingle();
   if (existing.error) return toast(`Profil gagal dibaca: ${existing.error.message}`);
+  const name = existing.data?.display_name?.trim() || fallbackName;
   const existingId = existing.data?.virtual_number || null;
   let saved = null;
   for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -127,13 +129,18 @@ async function ensureProfile() {
     saved = await supabase.from("profiles").upsert(
       { id: currentUser.id, display_name: name, virtual_number: candidate },
       { onConflict: "id" }
-    ).select("virtual_number").single();
+    ).select("display_name,virtual_number").single();
     if (!saved.error) break;
     // Unique constraint virtual_number is the final authority under concurrent sign-ups.
     if (existingId || saved.error.code !== "23505") break;
   }
   if (saved?.error) return toast(`ID kontak gagal dibuat: ${saved.error.message}`);
   currentVirtualNumber = saved?.data?.virtual_number || null;
+  currentProfileName = saved?.data?.display_name || name;
+  $("profileName").value = currentProfileName;
+  $("profileEmail").textContent = currentUser.email || "Email tidak tersedia";
+  $("profileNumber").textContent = currentVirtualNumber || "Belum dibuat";
+  $("profileBtn").textContent = currentProfileName.trim().charAt(0).toUpperCase() || "🙂";
   if ($("myNumber") && currentVirtualNumber) {
     $("myNumber").textContent = `ID WhatApp: ${currentVirtualNumber} · bukan nomor telepon`;
     $("copyIdBtn").classList.remove("hidden");
@@ -189,14 +196,16 @@ async function initSupabase() {
     currentUser = data.session?.user || null;
     $("authScreen").classList.toggle("hidden", !!currentUser);
     $("mainScreen").classList.toggle("hidden", !currentUser);
+    $("profileBtn").classList.toggle("hidden", !currentUser);
     $("authMessage").textContent = currentUser ? "" : "Masuk dengan akun Anda atau buat akun baru.";
     if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); }
     supabase.auth.onAuthStateChange((_event, nextSession) => {
       currentUser = nextSession?.user || null;
       $("authScreen").classList.toggle("hidden", !!currentUser);
       $("mainScreen").classList.toggle("hidden", !currentUser);
+      $("profileBtn").classList.toggle("hidden", !currentUser);
       if (currentUser) setTimeout(async () => { await ensureProfile(); await loadPeople(); subscribeToMessages(); }, 0);
-      else { people = []; renderChats(); }
+      else { people = []; currentVirtualNumber = null; currentProfileName = ""; renderChats(); }
     });
   } catch (error) {
     supabaseInitStarted = false;
@@ -206,6 +215,37 @@ async function initSupabase() {
     $("loginBtn").disabled = false;
     $("signupBtn").disabled = false;
   }
+}
+function openProfile() {
+  if (!currentUser) return toast("Masuk ke akun WhatApp untuk membuka profil.");
+  $("profileError").classList.add("hidden");
+  $("profileError").textContent = "";
+  $("profileName").value = currentProfileName;
+  $("profileEmail").textContent = currentUser.email || "Email tidak tersedia";
+  $("profileNumber").textContent = currentVirtualNumber || "Belum dibuat";
+  $("profileDialog").showModal();
+}
+async function saveProfile(event) {
+  event.preventDefault();
+  if (!supabase || !currentUser) return;
+  const name = $("profileName").value.trim();
+  if (name.length < 2) {
+    $("profileError").textContent = "Nama tampilan harus minimal 2 karakter.";
+    $("profileError").classList.remove("hidden");
+    return;
+  }
+  $("saveProfile").disabled = true;
+  const { error } = await supabase.from("profiles").update({ display_name: name }).eq("id", currentUser.id);
+  $("saveProfile").disabled = false;
+  if (error) {
+    $("profileError").textContent = `Nama gagal disimpan: ${error.message}`;
+    $("profileError").classList.remove("hidden");
+    return;
+  }
+  currentProfileName = name;
+  $("profileBtn").textContent = name.charAt(0).toUpperCase();
+  $("profileDialog").close();
+  toast("Profil berhasil diperbarui.");
 }
 async function auth(signup) {
   if (!supabase) { $("authMessage").textContent = "Layanan akun belum siap. Periksa koneksi internet lalu muat ulang halaman."; return; }
@@ -243,6 +283,15 @@ $("newChatDialog").addEventListener("click", (event) => { if (event.target === $
 $("copyIdBtn").onclick = async () => {
   if (!currentVirtualNumber) return toast("Masuk untuk mendapatkan ID WhatApp.");
   try { await navigator.clipboard.writeText(currentVirtualNumber); toast("ID WhatApp disalin. Bagikan kepada teman."); }
+  catch { toast(`ID WhatApp Anda: ${currentVirtualNumber}`); }
+};
+$("profileBtn").onclick = openProfile;
+$("profileForm").addEventListener("submit", saveProfile);
+$("closeProfile").onclick = () => $("profileDialog").close();
+$("profileDialog").addEventListener("click", (event) => { if (event.target === $("profileDialog")) $("profileDialog").close(); });
+$("copyProfileId").onclick = async () => {
+  if (!currentVirtualNumber) return toast("ID WhatApp belum tersedia.");
+  try { await navigator.clipboard.writeText(currentVirtualNumber); toast("ID WhatApp disalin."); }
   catch { toast(`ID WhatApp Anda: ${currentVirtualNumber}`); }
 };
 $("startCallFromList").onclick = startCall;
