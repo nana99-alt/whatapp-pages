@@ -552,7 +552,17 @@ $("loginBtn").onclick = () => auth(false); $("signupBtn").onclick = () => auth(t
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; $("installBtn").classList.remove("hidden"); });
 $("installBtn").onclick = async () => { if (!deferredInstallPrompt) return; deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); };
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); toast("WhatApp berhasil dipasang"); });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+if ("serviceWorker" in navigator) {
+  let reloadedForControllerChange = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadedForControllerChange) return;
+    reloadedForControllerChange = true;
+    window.location.reload();
+  });
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").then((registration) => registration.update()).catch(() => {});
+  });
+}
 renderChats();
 const sdkReady = cfg.SUPABASE_URL?.startsWith("https://") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
 if (sdkReady) {
