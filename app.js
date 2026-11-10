@@ -20,9 +20,53 @@ let incomingCall = null;
 let incomingCallPeer = null;
 let callTimeout = null;
 let speakerMuted = false;
+let ringAudioContext = null;
+let ringtoneTimer = null;
+let ringVibrateTimer = null;
 function toast(message) {
   const el = $("toast"); el.textContent = message; el.classList.add("show");
   clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove("show"), 3000);
+}
+function unlockRingtoneAudio() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  try {
+    ringAudioContext ||= new AudioContextClass();
+    if (ringAudioContext.state === "suspended") ringAudioContext.resume().catch(() => {});
+  } catch (error) { console.warn("Ringtone audio unavailable", error); }
+}
+function playRingtonePulse() {
+  if (!incomingCall || !ringAudioContext || ringAudioContext.state !== "running") return;
+  const now = ringAudioContext.currentTime;
+  const gain = ringAudioContext.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(0.12, now + 0.04);
+  gain.gain.setValueAtTime(0.12, now + 0.48);
+  gain.gain.linearRampToValueAtTime(0.0001, now + 0.58);
+  gain.connect(ringAudioContext.destination);
+  [440, 554].forEach((frequency) => {
+    const oscillator = ringAudioContext.createOscillator();
+    oscillator.type = "sine"; oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.connect(gain); oscillator.start(now); oscillator.stop(now + 0.6);
+  });
+}
+async function startRingtone() {
+  stopRingtone();
+  if (navigator.vibrate) {
+    navigator.vibrate([650, 350, 650]);
+    ringVibrateTimer = setInterval(() => navigator.vibrate([650, 350, 650]), 2400);
+  }
+  unlockRingtoneAudio();
+  try {
+    if (ringAudioContext?.state === "suspended") await ringAudioContext.resume();
+    playRingtonePulse();
+    ringtoneTimer = setInterval(playRingtonePulse, 2400);
+  } catch (error) { console.warn("Could not start incoming-call ringtone", error); }
+}
+function stopRingtone() {
+  clearInterval(ringtoneTimer); ringtoneTimer = null;
+  clearInterval(ringVibrateTimer); ringVibrateTimer = null;
+  if (navigator.vibrate) navigator.vibrate(0);
 }
 function showPage(page) {
   ["chatsPage", "updatesPage", "callsPage", "conversationPage"].forEach((id) => $(id).classList.add("hidden"));
@@ -216,6 +260,7 @@ async function handleCallSignal(signal) {
     $("incomingScreen").querySelector("h2").textContent = incomingCallPeer.name;
     $("incomingKind").textContent = signal.payload?.mode === "video" ? "Panggilan video masuk" : "Panggilan suara masuk";
     $("incomingScreen").classList.remove("hidden");
+    startRingtone();
     return;
   }
   if (!activeCall || signal.call_id !== activeCall.id) return;
@@ -233,6 +278,7 @@ async function acceptCall() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
     activeCall = { id: signal.call_id, peer, mode, initiator: false };
+    stopRingtone();
     incomingCall = null; incomingCallPeer = null;
     $("incomingScreen").classList.add("hidden"); attachLocalMedia(stream, mode);
     const pc = makePeerConnection(peer, mode); showActiveCall(peer, mode, "Menyambungkan…");
@@ -247,12 +293,14 @@ async function acceptCall() {
 }
 async function declineCall() {
   const signal = incomingCall; incomingCall = null; incomingCallPeer = null;
+  stopRingtone();
   $("incomingScreen").classList.add("hidden");
   if (signal && supabase && currentUser) {
     try { await sendCallSignal(signal.sender_id, signal.call_id, "reject"); } catch (error) { toast(`Panggilan ditolak, tetapi sinyal gagal dikirim: ${error.message}`); }
   }
 }
 async function finishCall(notifyPeer = true) {
+  stopRingtone();
   clearTimeout(callTimeout); callTimeout = null;
   const call = activeCall;
   if (notifyPeer && call && supabase && currentUser) {
@@ -453,6 +501,7 @@ async function auth(signup) {
   } catch (error) { $("authMessage").textContent = `Terjadi masalah: ${error.message}`; }
   finally { $("loginBtn").disabled = $("signupBtn").disabled = false; }
 }
+document.addEventListener("pointerdown", unlockRingtoneAudio, { once: true, capture: true });
 document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active")); btn.classList.add("active");
   showPage({ chats: "chatsPage", updates: "updatesPage", calls: "callsPage" }[btn.dataset.tab]);
