@@ -36,12 +36,11 @@
       <input id="password" type="password" placeholder="Kata sandi (minimal 6 karakter)" autocomplete="current-password" minlength="6" required>
       <button class="primary-btn" id="loginBtn">Masuk</button>
       <button class="text-btn" id="signupBtn">Buat akun baru</button>
-      <p class="hint" id="authMessage">Demo tampilan tetap bisa dicoba tanpa Supabase.</p>
-      <button class="outline-btn" id="demoBtn">Lihat demo</button>
+      <p class="hint" id="authMessage">Masuk dengan akun Anda atau buat akun baru.</p>
     </div>
   </section>
 
-  <main id="mainScreen">
+  <main id="mainScreen" class="hidden">
     <nav class="tabs">
       <button class="tab active" data-tab="chats">CHAT</button>
       <button class="tab" data-tab="updates">PEMBARUAN</button>
@@ -58,37 +57,24 @@
 
     <section id="updatesPage" class="page hidden">
       <div class="section-heading"><div><h2>Pembaruan</h2><span>Status teman Anda</span></div></div>
-      <div class="status-card"><div class="status-ring self-ring">＋</div><div><b>Status saya</b><small>Ketuk untuk menambahkan pembaruan</small></div></div>
-      <h3 class="subheading">Terbaru</h3>
-      <div class="status-card"><div class="status-ring"><span>👩🏻</span></div><div><b>Nadia</b><small>Baru saja</small></div></div>
-      <div class="status-card"><div class="status-ring"><span>🧑🏽</span></div><div><b>Rizky</b><small>12 menit yang lalu</small></div></div>
+      <p class="hint empty-state">Belum ada pembaruan.</p>
     </section>
 
     <section id="callsPage" class="page hidden">
       <div class="section-heading"><div><h2>Panggilan</h2><span>Riwayat panggilan</span></div><button class="round-add" id="startCallFromList">＋</button></div>
-      <div class="call-history">
-        <div class="history-avatar">👩🏻</div><div class="history-info"><b>Sarah</b><small>↙ Panggilan suara masuk</small></div><span class="history-time">09.42</span><button class="call-icon" data-call="voice">☎</button>
-      </div>
-      <div class="call-history">
-        <div class="history-avatar blue">🧑🏽</div><div class="history-info"><b>Rizky</b><small>↗ Panggilan video keluar</small></div><span class="history-time">Kemarin</span><button class="call-icon" data-call="video">▣</button>
-      </div>
+      <p class="hint empty-state">Riwayat panggilan belum tersedia.</p>
     </section>
 
     <section id="conversationPage" class="conversation hidden">
       <div class="chat-header">
         <button class="back-btn" id="backBtn">‹</button>
         <div class="avatar small-avatar" id="activeAvatar">👩🏻</div>
-        <div class="chat-person"><b id="activeName">Sarah</b><small id="activeStatus">online</small></div>
+        <div class="chat-person"><b id="activeName"></b><small id="activeStatus">tersedia</small></div>
         <button class="icon-btn" id="voiceCallBtn" aria-label="Panggilan suara belum aktif" title="Panggilan belum aktif">☎</button>
         <button class="icon-btn" id="videoCallBtn" aria-label="Panggilan video belum aktif" title="Panggilan belum aktif">▣</button>
         <button class="icon-btn">⋮</button>
       </div>
-      <div class="messages" id="messages">
-        <div class="date-chip">HARI INI</div>
-        <div class="bubble received">Hai! Apa kabar?<span>09.40</span></div>
-        <div class="bubble sent">Baik, kamu bagaimana? <span>09.41　✓✓</span></div>
-        <div class="bubble received">Aku baik juga 😊<span>09.42</span></div>
-      </div>
+      <div class="messages" id="messages"></div>
       <div class="composer">
         <button class="attach-btn" id="attachBtn">＋</button>
         <input id="messageInput" placeholder="Ketik pesan" autocomplete="off">
@@ -113,7 +99,7 @@
     <div class="call-wallpaper"></div>
     <div class="call-top"><span id="callTypeLabel">Panggilan suara</span><button id="minimizeCall">⌄</button></div>
     <div class="caller-avatar" id="callerAvatar">👩🏻</div>
-    <h2 id="callerName">Sarah</h2><p id="callStatus">Memanggil...</p>
+    <h2 id="callerName"></h2><p id="callStatus">Panggilan belum tersedia</p>
     <div class="call-controls">
       <button class="control-btn muted" id="muteBtn">♩<small>Bisukan</small></button>
       <button class="control-btn speaker" id="speakerBtn">◖<small>Speaker</small></button>
@@ -123,8 +109,8 @@
   </section>
 
   <section id="incomingScreen" class="incoming-screen hidden">
-    <div class="incoming-glow"></div><div class="incoming-avatar">👩🏻</div>
-    <p class="incoming-label">PANGGILAN MASUK</p><h2>Sarah</h2><p id="incomingKind">Panggilan suara WhatApp</p>
+    <div class="incoming-glow"></div><div class="incoming-avatar">☎</div>
+    <p class="incoming-label">PANGGILAN MASUK</p><h2></h2><p id="incomingKind">Panggilan suara WhatApp</p>
     <div class="incoming-actions"><button id="declineBtn" class="decline">✕<small>Tolak</small></button><button id="acceptBtn" class="accept">☎<small>Terima</small></button></div>
   </section>
 </div>

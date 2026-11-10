@@ -1,6 +1,5 @@
 const $ = (id) => document.getElementById(id);
 const cfg = window.WHATAPP_CONFIG || {};
-const DEMO_STORAGE_KEY = "whatapp-demo-v2";
 let supabase = null;
 let currentUser = null;
 let activeChat = null;
@@ -9,15 +8,7 @@ let people = [];
 let deferredInstallPrompt = null;
 let currentVirtualNumber = null;
 let supabaseInitStarted = false;
-let userSelectedDemo = false;
 let supabaseModulePromise = null;
-const demoPeople = [
-  { id: "demo-sarah", name: "Sarah", avatar: "👩🏻", preview: "Aku baik juga 😊", time: "09.42", unread: 2, status: "online", demo: true },
-  { id: "demo-rizky", name: "Rizky", avatar: "🧑🏽", preview: "Oke, sampai nanti!", time: "08.15", unread: 0, status: "terakhir dilihat 08.15", demo: true },
-  { id: "demo-nadia", name: "Nadia", avatar: "👩🏼", preview: "Foto sudah aku kirim", time: "Kemarin", unread: 0, status: "online", demo: true },
-  { id: "demo-andi", name: "Andi", avatar: "👨🏻", preview: "Terima kasih banyak", time: "Kemarin", unread: 0, status: "terakhir dilihat kemarin", demo: true }
-];
-people = [...demoPeople];
 function toast(message) {
   const el = $("toast"); el.textContent = message; el.classList.add("show");
   clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove("show"), 3000);
@@ -28,24 +19,6 @@ function showPage(page) {
 }
 function formatTime(value) {
   return value ? new Date(value).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
-}
-function readDemoData() {
-  try { return JSON.parse(localStorage.getItem(DEMO_STORAGE_KEY) || "{}"); } catch { return {}; }
-}
-function saveDemoData(data) {
-  try { localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(data)); }
-  catch { toast("Penyimpanan lokal penuh; pesan demo tidak dapat disimpan."); }
-}
-function getDemoMessages(person) {
-  const stored = readDemoData();
-  if (stored.messages?.[person.id]) return stored.messages[person.id];
-  const now = Date.now();
-  if (person.id === "demo-sarah") return [
-    { id: "sample-1", sender_id: person.id, body: "Hai! Apa kabar?", created_at: new Date(now - 120000).toISOString() },
-    { id: "sample-2", sender_id: "demo-me", body: "Baik, kamu bagaimana?", created_at: new Date(now - 60000).toISOString() },
-    { id: "sample-3", sender_id: person.id, body: "Aku baik juga 😊", created_at: new Date(now).toISOString() }
-  ];
-  return [];
 }
 function renderChats(filter = "") {
   const list = $("chatList"); list.innerHTML = "";
@@ -64,7 +37,7 @@ function renderChats(filter = "") {
   });
   if (!filtered.length) {
     const empty = document.createElement("p"); empty.className = "hint empty-state";
-    empty.textContent = query ? "Kontak tidak ditemukan. Coba cari nama atau ID WhatApp." : "Belum ada obrolan. Ketuk + untuk memulai percakapan.";
+    empty.textContent = query ? "Kontak tidak ditemukan. Coba cari nama atau ID WhatApp." : (currentUser ? "Belum ada obrolan. Ketuk + untuk memulai percakapan." : "Masuk dengan akun Anda untuk melihat obrolan.");
     list.appendChild(empty);
   }
 }
@@ -72,7 +45,7 @@ function renderMessages(messages = []) {
   const container = $("messages"); container.innerHTML = '<div class="date-chip">OBROLAN</div>';
   messages.forEach((message) => {
     const bubble = document.createElement("div");
-    bubble.className = `bubble ${message.sender_id === currentUser?.id || message.sender_id === "demo-me" ? "sent" : "received"}`;
+  bubble.className = `bubble ${message.sender_id === currentUser?.id ? "sent" : "received"}`;
     if (message.body) bubble.appendChild(document.createTextNode(message.body));
     if (message.attachment_url) {
       const link = document.createElement("a"); link.href = message.attachment_url; link.target = "_blank"; link.rel = "noopener noreferrer";
@@ -84,7 +57,6 @@ function renderMessages(messages = []) {
   container.scrollTop = container.scrollHeight;
 }
 async function loadMessages() {
-  if (activeChat?.demo) return renderMessages(getDemoMessages(activeChat));
   if (!supabase || !currentUser || !activeChat) return renderMessages([]);
   const { data, error } = await supabase.from("messages").select("id,sender_id,receiver_id,body,attachment_url,attachment_type,created_at,read_at").or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`).order("created_at", { ascending: true }).limit(200);
   if (error) return toast(`Pesan gagal dimuat: ${error.message}`);
@@ -110,14 +82,7 @@ async function openChat(person) {
 async function sendMessage(text, file = null) {
   const body = text.trim(); if (!body && !file) return;
   if (!activeChat) return toast("Pilih kontak terlebih dahulu.");
-  if (activeChat.demo || !supabase || !currentUser) {
-    const data = readDemoData(); data.messages ||= {}; data.messages[activeChat.id] ||= getDemoMessages(activeChat);
-    data.messages[activeChat.id].push({ id: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()), sender_id: "demo-me", body, created_at: new Date().toISOString() });
-    activeChat.preview = body || "Lampiran"; activeChat.time = formatTime(new Date()); saveDemoData(data);
-    $("messageInput").value = ""; renderMessages(data.messages[activeChat.id]); renderChats($("filterChats").value);
-    if (file) toast("Lampiran hanya tersedia setelah akun dan penyimpanan tersambung.");
-    return;
-  }
+  if (!supabase || !currentUser) return toast("Masuk ke akun WhatApp untuk mengirim pesan.");
   let attachment_url = null; let attachment_type = null;
   if (file) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -175,22 +140,20 @@ async function ensureProfile() {
   }
 }
 async function loadPeople() {
-  if (!supabase || !currentUser) { people = [...demoPeople]; renderChats($("filterChats").value); return; }
+  if (!supabase || !currentUser) { people = []; renderChats($("filterChats").value); return; }
   const { data, error } = await supabase.from("profiles").select("id,display_name,avatar_url,virtual_number").neq("id", currentUser.id).order("display_name").limit(100);
   if (error) return toast(`Kontak gagal dimuat: ${error.message}`);
   people = (data || []).map((p) => ({ id: p.id, name: p.display_name, avatar: p.avatar_url || "🙂", virtual_number: p.virtual_number, preview: p.virtual_number || "Mulai percakapan baru", status: "tersedia" }));
   renderChats($("filterChats").value);
 }
 function startNewChat() {
-  const demoMode = !supabase || !currentUser;
+  if (!supabase || !currentUser) return toast("Masuk ke akun WhatApp untuk memulai obrolan.");
   $("newChatError").classList.add("hidden");
   $("newChatError").textContent = "";
   $("contactInput").value = "";
-  $("contactLabel").textContent = demoMode ? "Nama kontak demo" : "ID WhatApp teman";
-  $("contactInput").placeholder = demoMode ? "Contoh: Rina" : "WA-1234-5678";
-  $("newChatHelp").textContent = demoMode
-    ? "Demo hanya berjalan di perangkat ini. Untuk chat sungguhan, masuk dengan akun dan gunakan ID WhatApp teman."
-    : "Minta teman membagikan ID WhatApp miliknya. ID ini bukan nomor telepon.";
+  $("contactLabel").textContent = "ID WhatApp teman";
+  $("contactInput").placeholder = "WA-1234-5678";
+  $("newChatHelp").textContent = "Minta teman membagikan ID WhatApp miliknya. ID ini bukan nomor telepon.";
   const dialog = $("newChatDialog");
   if (typeof dialog.showModal === "function") dialog.showModal();
   else { toast("Browser ini belum mendukung formulir chat. Perbarui Chrome lalu coba lagi."); return; }
@@ -201,12 +164,7 @@ async function handleNewChat(event) {
   const identifier = $("contactInput").value.trim();
   if (!identifier) return;
   const showError = (message) => { $("newChatError").textContent = message; $("newChatError").classList.remove("hidden"); };
-  if (!supabase || !currentUser) {
-    const exists = people.find((person) => person.name.toLowerCase() === identifier.toLowerCase());
-    const person = exists || { id: `demo-${Date.now()}`, name: identifier, avatar: "🙂", preview: "Mulai percakapan baru", status: "demo lokal", demo: true };
-    if (!exists) people.unshift(person);
-    $("newChatDialog").close(); renderChats($("filterChats").value); return openChat(person);
-  }
+  if (!supabase || !currentUser) return showError("Masuk ke akun WhatApp untuk mencari kontak.");
   const { data, error } = await supabase.from("profiles").select("id,display_name,avatar_url,virtual_number").eq("virtual_number", identifier.toUpperCase()).maybeSingle();
   if (error) return showError(`Pencarian gagal: ${error.message}`);
   if (!data) return showError("ID tidak ditemukan. Periksa huruf dan angka, lalu coba lagi.");
@@ -218,26 +176,31 @@ async function handleNewChat(event) {
 async function initSupabase() {
   const ready = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_URL.includes("YOUR-PROJECT") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
   if (!ready) {
-    people = [...demoPeople]; renderChats(); $("authScreen").classList.remove("hidden");
-    $("authMessage").textContent = "Login belum dikonfigurasi. Anda bisa mencoba demo lokal.";
+    people = []; renderChats(); $("authScreen").classList.remove("hidden"); $("mainScreen").classList.add("hidden");
+    $("authMessage").textContent = "Layanan akun belum dikonfigurasi. Hubungi pengelola aplikasi.";
     return;
   }
   if (!window.supabase?.createClient) throw new Error("SDK autentikasi belum siap");
-  if (supabaseInitStarted || userSelectedDemo) return;
+  if (supabaseInitStarted) return;
   supabaseInitStarted = true;
   try {
     supabase = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
     const { data, error } = await supabase.auth.getSession(); if (error) throw error;
-    currentUser = data.session?.user || null; $("authScreen").classList.toggle("hidden", !!currentUser);
+    currentUser = data.session?.user || null;
+    $("authScreen").classList.toggle("hidden", !!currentUser);
+    $("mainScreen").classList.toggle("hidden", !currentUser);
+    $("authMessage").textContent = currentUser ? "" : "Masuk dengan akun Anda atau buat akun baru.";
     if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); }
     supabase.auth.onAuthStateChange((_event, nextSession) => {
-      currentUser = nextSession?.user || null; $("authScreen").classList.toggle("hidden", !!currentUser);
+      currentUser = nextSession?.user || null;
+      $("authScreen").classList.toggle("hidden", !!currentUser);
+      $("mainScreen").classList.toggle("hidden", !currentUser);
       if (currentUser) setTimeout(async () => { await ensureProfile(); await loadPeople(); subscribeToMessages(); }, 0);
-      else { people = [...demoPeople]; renderChats(); }
+      else { people = []; renderChats(); }
     });
   } catch (error) {
     supabaseInitStarted = false;
-    supabase = null; people = [...demoPeople]; renderChats(); $("authScreen").classList.remove("hidden");
+    supabase = null; currentUser = null; people = []; renderChats(); $("authScreen").classList.remove("hidden"); $("mainScreen").classList.add("hidden");
     $("authMessage").textContent = `Koneksi layanan belum siap: ${error.message}`;
   } finally {
     $("loginBtn").disabled = false;
@@ -245,9 +208,10 @@ async function initSupabase() {
   }
 }
 async function auth(signup) {
-  if (!supabase) { $("authMessage").textContent = "Layanan akun belum siap. Periksa koneksi internet lalu muat ulang, atau gunakan demo lokal."; return; }
+  if (!supabase) { $("authMessage").textContent = "Layanan akun belum siap. Periksa koneksi internet lalu muat ulang halaman."; return; }
   const email = $("email").value.trim(); const password = $("password").value;
   if (!email || password.length < 6) { $("authMessage").textContent = "Masukkan email yang valid dan kata sandi minimal 6 karakter."; return; }
+  $("password").autocomplete = signup ? "new-password" : "current-password";
   $("loginBtn").disabled = $("signupBtn").disabled = true;
   try {
     const redirectUrl = new URL("./", window.location.href).href;
@@ -285,10 +249,9 @@ $("startCallFromList").onclick = startCall;
 document.querySelectorAll("[data-call]").forEach((button) => button.onclick = startCall);
 $("menuBtn").onclick = async () => {
   if (supabase && currentUser) { if (confirm("Keluar dari akun WhatApp?")) { await supabase.auth.signOut(); toast("Anda telah keluar."); } }
-  else toast("Mode demo aktif. Akun dan sinkronisasi memerlukan koneksi Supabase.");
+  else toast("Masuk ke akun WhatApp untuk menggunakan aplikasi.");
 };
 $("searchBtn").onclick = () => { $("filterChats").focus(); $("filterChats").scrollIntoView({ behavior: "smooth", block: "center" }); };
-$("demoBtn").onclick = () => { userSelectedDemo = true; $("authScreen").classList.add("hidden"); people = [...demoPeople]; renderChats(); toast("Mode demo lokal aktif; pesan disimpan di perangkat ini saja."); };
 $("loginBtn").onclick = () => auth(false); $("signupBtn").onclick = () => auth(true);
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; $("installBtn").classList.remove("hidden"); });
 $("installBtn").onclick = async () => { if (!deferredInstallPrompt) return; deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); };
