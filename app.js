@@ -10,6 +10,16 @@ let currentVirtualNumber = null;
 let currentProfileName = "";
 let supabaseInitStarted = false;
 let supabaseModulePromise = null;
+let callSignalsChannel = null;
+let callSignalsReady = false;
+let peerConnection = null;
+let localMediaStream = null;
+let remoteMediaStream = null;
+let activeCall = null;
+let incomingCall = null;
+let incomingCallPeer = null;
+let callTimeout = null;
+let speakerMuted = false;
 function toast(message) {
   const el = $("toast"); el.textContent = message; el.classList.add("show");
   clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove("show"), 3000);
@@ -96,7 +106,184 @@ async function sendMessage(text, file = null) {
   if (error) return toast(`Pesan gagal dikirim: ${error.message}`);
   $("messageInput").value = ""; $("fileInput").value = ""; await loadMessages();
 }
-function startCall() { toast("Panggilan suara/video belum aktif: signaling WebRTC dan TURN server belum dikonfigurasi."); }
+const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" }] };
+function waitForIceGathering(pc, timeout = 10000) {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => { clearTimeout(timer); pc.removeEventListener("icegatheringstatechange", check); resolve(); };
+    const check = () => { if (pc.iceGatheringState === "complete") finish(); };
+    const timer = setTimeout(finish, timeout);
+    pc.addEventListener("icegatheringstatechange", check);
+    check();
+  });
+}
+async function sendCallSignal(receiverId, callId, kind, payload = {}) {
+  const { error } = await supabase.from("call_signals").insert({ call_id: callId, sender_id: currentUser.id, receiver_id: receiverId, kind, payload });
+  if (error) throw error;
+}
+function showActiveCall(peer, mode, status = "Menghubungkan…") {
+  speakerMuted = false; $("remoteAudio").muted = false; $("remoteVideo").muted = true;
+  $("muteBtn").classList.add("muted"); $("muteBtn").querySelector("small").textContent = "Bisukan";
+  $("speakerBtn").classList.remove("muted"); $("speakerBtn").querySelector("small").textContent = "Speaker";
+  $("videoToggle").classList.remove("muted"); $("videoToggle").querySelector("small").textContent = "Video";
+  $("callerName").textContent = peer.name || "Kontak WhatApp";
+  $("callerAvatar").textContent = peer.avatar || "🙂";
+  $("callTypeLabel").textContent = mode === "video" ? "Panggilan video" : "Panggilan suara";
+  $("callStatus").textContent = status;
+  $("resumeCallBtn").classList.add("hidden");
+  $("remoteVideo").classList.toggle("hidden", mode !== "video");
+  $("localVideo").classList.toggle("hidden", mode !== "video");
+  $("callerAvatar").classList.toggle("hidden", mode === "video");
+  $("mainScreen").classList.add("hidden");
+  $("callScreen").classList.remove("hidden");
+}
+function attachLocalMedia(stream, mode) {
+  localMediaStream = stream;
+  $("localVideo").srcObject = mode === "video" ? stream : null;
+}
+function makePeerConnection(peer, mode) {
+  const pc = new RTCPeerConnection(rtcConfig);
+  peerConnection = pc;
+  remoteMediaStream = new MediaStream();
+  $("remoteVideo").srcObject = remoteMediaStream;
+  $("remoteAudio").srcObject = remoteMediaStream;
+  localMediaStream.getTracks().forEach((track) => pc.addTrack(track, localMediaStream));
+  pc.ontrack = (event) => {
+    const stream = event.streams[0];
+    if (stream) {
+      stream.getTracks().forEach((track) => { if (!remoteMediaStream.getTrackById(track.id)) remoteMediaStream.addTrack(track); });
+    } else if (!remoteMediaStream.getTrackById(event.track.id)) remoteMediaStream.addTrack(event.track);
+    $("callStatus").textContent = "Terhubung";
+    if (mode === "video") $("remoteVideo").play().catch(() => {});
+    else $("remoteAudio").play().catch(() => {});
+  };
+  pc.onconnectionstatechange = () => {
+    if (!activeCall || activeCall.peer.id !== peer.id) return;
+    if (pc.connectionState === "connected") $("callStatus").textContent = "Terhubung";
+    else if (pc.connectionState === "failed") $("callStatus").textContent = "Koneksi gagal; jaringan ini mungkin memerlukan TURN.";
+    else if (pc.connectionState === "disconnected") $("callStatus").textContent = "Koneksi terputus…";
+  };
+  return pc;
+}
+async function startCall(mode = "audio") {
+  if (!supabase || !currentUser) return toast("Masuk ke akun WhatApp untuk menelepon.");
+  if (!activeChat) return toast("Buka obrolan kontak terlebih dahulu.");
+  if (activeCall || incomingCall) return toast("Akhiri panggilan yang sedang berlangsung terlebih dahulu.");
+  if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") return toast("Browser ini tidak mendukung panggilan. Buka situs melalui HTTPS di browser terbaru.");
+  try {
+    if (!callSignalsReady) await subscribeToCallSignals();
+    if (!callSignalsReady) return toast("Layanan notifikasi panggilan belum tersambung. Coba lagi sebentar.");
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
+    const callId = crypto.randomUUID();
+    const peer = { id: activeChat.id, name: activeChat.name, avatar: activeChat.avatar };
+    activeCall = { id: callId, peer, mode, initiator: true };
+    attachLocalMedia(stream, mode);
+    const pc = makePeerConnection(peer, mode);
+    showActiveCall(peer, mode, "Memanggil…");
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitForIceGathering(pc);
+    await sendCallSignal(peer.id, callId, "offer", { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, mode });
+    callTimeout = setTimeout(() => { if (activeCall?.id === callId && pc.connectionState !== "connected") { toast("Tidak dijawab."); finishCall(false); } }, 45000);
+  } catch (error) {
+    await finishCall(false);
+    toast(error.name === "NotAllowedError" ? "Izinkan akses mikrofon/kamera di pengaturan browser." : `Panggilan gagal dimulai: ${error.message}`);
+  }
+}
+async function subscribeToCallSignals() {
+  if (!supabase || !currentUser) return false;
+  if (callSignalsReady) return true;
+  if (callSignalsChannel) await supabase.removeChannel(callSignalsChannel);
+  callSignalsReady = false;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ready) => { if (settled) return; settled = true; clearTimeout(timer); callSignalsReady = ready; resolve(ready); };
+    const timer = setTimeout(() => finish(false), 12000);
+    callSignalsChannel = supabase.channel(`call-signals:${currentUser.id}`).on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "call_signals", filter: `receiver_id=eq.${currentUser.id}`
+    }, ({ new: signal }) => { handleCallSignal(signal).catch((error) => toast(`Sinyal panggilan gagal: ${error.message}`)); }).subscribe((status) => {
+      if (status === "SUBSCRIBED") finish(true);
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") { toast("Notifikasi panggilan tidak tersambung. Muat ulang aplikasi."); finish(false); }
+    });
+  });
+}
+async function handleCallSignal(signal) {
+  if (!currentUser || signal.sender_id === currentUser.id) return;
+  if (signal.kind === "offer") {
+    if (activeCall || incomingCall) { await sendCallSignal(signal.sender_id, signal.call_id, "busy"); return; }
+    const { data } = await supabase.from("profiles").select("display_name,avatar_url").eq("id", signal.sender_id).maybeSingle();
+    incomingCall = signal;
+    incomingCallPeer = { id: signal.sender_id, name: data?.display_name || "Kontak WhatApp", avatar: data?.avatar_url || "🙂" };
+    $("incomingScreen").querySelector("h2").textContent = incomingCallPeer.name;
+    $("incomingKind").textContent = signal.payload?.mode === "video" ? "Panggilan video masuk" : "Panggilan suara masuk";
+    $("incomingScreen").classList.remove("hidden");
+    return;
+  }
+  if (!activeCall || signal.call_id !== activeCall.id) return;
+  if (signal.kind === "answer" && peerConnection) {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(signal.payload.description));
+    clearTimeout(callTimeout); $("callStatus").textContent = "Menyambungkan…";
+  } else if (signal.kind === "reject" || signal.kind === "busy" || signal.kind === "hangup") {
+    const reason = signal.kind === "busy" ? "Kontak sedang sibuk." : signal.kind === "reject" ? "Panggilan ditolak." : "Panggilan diakhiri.";
+    await finishCall(false); toast(reason);
+  }
+}
+async function acceptCall() {
+  if (!incomingCall || !incomingCallPeer || !supabase || !currentUser) return;
+  const signal = incomingCall; const peer = incomingCallPeer; const mode = signal.payload?.mode === "video" ? "video" : "audio";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
+    activeCall = { id: signal.call_id, peer, mode, initiator: false };
+    incomingCall = null; incomingCallPeer = null;
+    $("incomingScreen").classList.add("hidden"); attachLocalMedia(stream, mode);
+    const pc = makePeerConnection(peer, mode); showActiveCall(peer, mode, "Menyambungkan…");
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.payload.description));
+    await pc.setLocalDescription(await pc.createAnswer());
+    await waitForIceGathering(pc);
+    await sendCallSignal(peer.id, signal.call_id, "answer", { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+  } catch (error) {
+    await finishCall(false);
+    toast(error.name === "NotAllowedError" ? "Izinkan akses mikrofon/kamera di pengaturan browser." : `Gagal menerima panggilan: ${error.message}`);
+  }
+}
+async function declineCall() {
+  const signal = incomingCall; incomingCall = null; incomingCallPeer = null;
+  $("incomingScreen").classList.add("hidden");
+  if (signal && supabase && currentUser) {
+    try { await sendCallSignal(signal.sender_id, signal.call_id, "reject"); } catch (error) { toast(`Panggilan ditolak, tetapi sinyal gagal dikirim: ${error.message}`); }
+  }
+}
+async function finishCall(notifyPeer = true) {
+  clearTimeout(callTimeout); callTimeout = null;
+  const call = activeCall;
+  if (notifyPeer && call && supabase && currentUser) {
+    try { await sendCallSignal(call.peer.id, call.id, "hangup"); } catch (error) { console.warn("Could not send call hangup", error); }
+  }
+  if (peerConnection) { peerConnection.ontrack = null; peerConnection.close(); peerConnection = null; }
+  localMediaStream?.getTracks().forEach((track) => track.stop()); localMediaStream = null;
+  remoteMediaStream?.getTracks().forEach((track) => track.stop()); remoteMediaStream = null;
+  $("localVideo").srcObject = null; $("remoteVideo").srcObject = null; $("remoteAudio").srcObject = null;
+  activeCall = null; incomingCall = null; incomingCallPeer = null;
+  $("callScreen").classList.add("hidden"); $("incomingScreen").classList.add("hidden");
+  $("resumeCallBtn").classList.add("hidden");
+  if (currentUser) $("mainScreen").classList.remove("hidden");
+}
+function toggleMute() {
+  if (!localMediaStream) return;
+  const track = localMediaStream.getAudioTracks()[0]; if (!track) return;
+  track.enabled = !track.enabled; $("muteBtn").classList.toggle("muted", !track.enabled);
+  $("muteBtn").querySelector("small").textContent = track.enabled ? "Bisukan" : "Aktifkan suara";
+}
+function toggleSpeaker() {
+  speakerMuted = !speakerMuted; $("remoteAudio").muted = speakerMuted;
+  $("speakerBtn").classList.toggle("muted", speakerMuted);
+  $("speakerBtn").querySelector("small").textContent = speakerMuted ? "Nyalakan audio" : "Speaker";
+}
+function toggleVideo() {
+  const track = localMediaStream?.getVideoTracks()[0];
+  if (!track) return toast("Video tidak aktif pada panggilan ini.");
+  track.enabled = !track.enabled; $("videoToggle").classList.toggle("muted", !track.enabled);
+  $("videoToggle").querySelector("small").textContent = track.enabled ? "Matikan video" : "Nyalakan video";
+}
 function createVirtualId() {
   const bytes = new Uint32Array(2);
   crypto.getRandomValues(bytes);
@@ -198,14 +385,18 @@ async function initSupabase() {
     $("mainScreen").classList.toggle("hidden", !currentUser);
     $("profileBtn").classList.toggle("hidden", !currentUser);
     $("authMessage").textContent = currentUser ? "" : "Masuk dengan akun Anda atau buat akun baru.";
-    if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); }
+    if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCallSignals(); }
     supabase.auth.onAuthStateChange((_event, nextSession) => {
       currentUser = nextSession?.user || null;
       $("authScreen").classList.toggle("hidden", !!currentUser);
       $("mainScreen").classList.toggle("hidden", !currentUser);
       $("profileBtn").classList.toggle("hidden", !currentUser);
-      if (currentUser) setTimeout(async () => { await ensureProfile(); await loadPeople(); subscribeToMessages(); }, 0);
-      else { people = []; currentVirtualNumber = null; currentProfileName = ""; renderChats(); }
+      if (currentUser) setTimeout(async () => { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCallSignals(); }, 0);
+      else {
+        if (callSignalsChannel) supabase.removeChannel(callSignalsChannel);
+        callSignalsChannel = null; callSignalsReady = false; finishCall(false);
+        people = []; currentVirtualNumber = null; currentProfileName = ""; renderChats();
+      }
     });
   } catch (error) {
     supabaseInitStarted = false;
@@ -271,9 +462,14 @@ $("filterChats").addEventListener("input", (event) => renderChats(event.target.v
 $("backBtn").onclick = () => { showPage("chatsPage"); document.querySelector('[data-tab="chats"]').click(); };
 $("sendBtn").onclick = () => sendMessage($("messageInput").value);
 $("messageInput").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(event.target.value); } });
-$("voiceCallBtn").onclick = $("videoCallBtn").onclick = startCall;
-$("endCallBtn").onclick = $("minimizeCall").onclick = () => { $("callScreen").classList.add("hidden"); $("mainScreen").classList.remove("hidden"); };
-$("muteBtn").onclick = $("speakerBtn").onclick = $("videoToggle").onclick = startCall;
+$("voiceCallBtn").onclick = () => startCall("audio");
+$("videoCallBtn").onclick = () => startCall("video");
+$("endCallBtn").onclick = () => finishCall(true);
+$("minimizeCall").onclick = () => { $("callScreen").classList.add("hidden"); $("mainScreen").classList.remove("hidden"); $("resumeCallBtn").classList.toggle("hidden", !activeCall); };
+$("resumeCallBtn").onclick = () => { if (!activeCall) return; $("mainScreen").classList.add("hidden"); $("resumeCallBtn").classList.add("hidden"); $("callScreen").classList.remove("hidden"); };
+$("muteBtn").onclick = toggleMute;
+$("speakerBtn").onclick = toggleSpeaker;
+$("videoToggle").onclick = toggleVideo;
 $("attachBtn").onclick = () => $("fileInput").click();
 $("fileInput").onchange = (event) => { const file = event.target.files[0]; if (file) sendMessage("", file); };
 $("newChatBtn").onclick = $("composeBtn").onclick = startNewChat;
@@ -294,7 +490,9 @@ $("copyProfileId").onclick = async () => {
   try { await navigator.clipboard.writeText(currentVirtualNumber); toast("ID WhatApp disalin."); }
   catch { toast(`ID WhatApp Anda: ${currentVirtualNumber}`); }
 };
-$("startCallFromList").onclick = startCall;
+$("startCallFromList").onclick = () => toast("Buka obrolan kontak terlebih dahulu untuk menelepon.");
+$("acceptBtn").onclick = acceptCall;
+$("declineBtn").onclick = declineCall;
 document.querySelectorAll("[data-call]").forEach((button) => button.onclick = startCall);
 $("menuBtn").onclick = async () => {
   if (supabase && currentUser) { if (confirm("Keluar dari akun WhatApp?")) { await supabase.auth.signOut(); toast("Anda telah keluar."); } }

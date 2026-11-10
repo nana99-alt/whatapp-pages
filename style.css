@@ -24,3 +24,7 @@ button:disabled{opacity:.55;cursor:wait}
 .profile-readonly{margin:4px 0;color:var(--ink);font-size:14px;overflow-wrap:anywhere}
 .profile-id-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;border:1px solid #dce7e1;border-radius:10px;background:#f7faf8}
 .profile-id-row code{font-size:15px;font-weight:700;color:var(--green);letter-spacing:.4px}
+.call-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#061f1c;z-index:0}
+.call-local-video{position:absolute;right:18px;top:72px;width:clamp(84px,24vw,132px);aspect-ratio:3/4;object-fit:cover;border:2px solid #ffffffaa;border-radius:14px;background:#103d37;z-index:2}
+.call-screen .call-top,.call-screen .caller-avatar,.call-screen h2,.call-screen #callStatus,.call-screen .call-controls{position:relative;z-index:2}
+.call-restore{display:block;width:calc(100% - 28px);margin:12px 14px 0;padding:11px 14px;border-radius:12px;background:#d8f2e6;color:#087a57;text-align:left;font-weight:700}

@@ -42,6 +42,7 @@
   </section>
 
   <main id="mainScreen" class="hidden">
+    <button id="resumeCallBtn" class="call-restore hidden" type="button">Panggilan berlangsung · Kembali</button>
     <nav class="tabs">
       <button class="tab active" data-tab="chats">CHAT</button>
       <button class="tab" data-tab="updates">PEMBARUAN</button>
@@ -113,6 +114,9 @@
 
   <section id="callScreen" class="call-screen hidden">
     <div class="call-wallpaper"></div>
+    <video id="remoteVideo" class="call-video hidden" autoplay playsinline></video>
+    <video id="localVideo" class="call-local-video hidden" autoplay playsinline muted></video>
+    <audio id="remoteAudio" autoplay></audio>
     <div class="call-top"><span id="callTypeLabel">Panggilan suara</span><button id="minimizeCall">⌄</button></div>
     <div class="caller-avatar" id="callerAvatar">👩🏻</div>
     <h2 id="callerName"></h2><p id="callStatus">Panggilan belum tersedia</p>
