@@ -10,6 +10,7 @@ let deferredInstallPrompt = null;
 let currentVirtualNumber = null;
 let supabaseInitStarted = false;
 let userSelectedDemo = false;
+let supabaseModulePromise = null;
 const demoPeople = [
   { id: "demo-sarah", name: "Sarah", avatar: "👩🏻", preview: "Aku baik juga 😊", time: "09.42", unread: 2, status: "online", demo: true },
   { id: "demo-rizky", name: "Rizky", avatar: "🧑🏽", preview: "Oke, sampai nanti!", time: "08.15", unread: 0, status: "terakhir dilihat 08.15", demo: true },
@@ -136,6 +137,19 @@ function createVirtualId() {
   const part = (value) => String(value % 9000 + 1000);
   return `WA-${part(bytes[0])}-${part(bytes[1])}`;
 }
+async function loadSupabaseSdk() {
+  if (window.supabase?.createClient) return window.supabase;
+  if (!supabaseModulePromise) {
+    supabaseModulePromise = import("https://esm.sh/@supabase/supabase-js@2")
+      .catch(() => import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"))
+      .then((sdk) => {
+        if (typeof sdk.createClient !== "function") throw new Error("SDK tidak menyediakan createClient");
+        window.supabase = sdk;
+        return sdk;
+      });
+  }
+  return supabaseModulePromise;
+}
 async function ensureProfile() {
   if (!supabase || !currentUser) return;
   const name = currentUser.user_metadata?.display_name || currentUser.email?.split("@")[0] || "Pengguna";
@@ -208,11 +222,7 @@ async function initSupabase() {
     $("authMessage").textContent = "Login belum dikonfigurasi. Anda bisa mencoba demo lokal.";
     return;
   }
-  if (!window.supabase?.createClient) {
-    people = [...demoPeople]; renderChats(); $("authScreen").classList.remove("hidden");
-    $("authMessage").textContent = "Layanan akun sedang dimuat. Jika lama, coba muat ulang atau gunakan demo.";
-    return;
-  }
+  if (!window.supabase?.createClient) throw new Error("SDK autentikasi belum siap");
   if (supabaseInitStarted || userSelectedDemo) return;
   supabaseInitStarted = true;
   try {
@@ -226,8 +236,12 @@ async function initSupabase() {
       else { people = [...demoPeople]; renderChats(); }
     });
   } catch (error) {
+    supabaseInitStarted = false;
     supabase = null; people = [...demoPeople]; renderChats(); $("authScreen").classList.remove("hidden");
     $("authMessage").textContent = `Koneksi layanan belum siap: ${error.message}`;
+  } finally {
+    $("loginBtn").disabled = false;
+    $("signupBtn").disabled = false;
   }
 }
 async function auth(signup) {
@@ -281,15 +295,17 @@ $("installBtn").onclick = async () => { if (!deferredInstallPrompt) return; defe
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); toast("WhatApp berhasil dipasang"); });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 renderChats();
-const supabaseSdk = $("supabaseSdk");
-if (window.supabase?.createClient) initSupabase();
-else {
-  initSupabase();
-  if (supabaseSdk) {
-    supabaseSdk.addEventListener("load", () => initSupabase(), { once: true });
-    supabaseSdk.addEventListener("error", () => {
+const sdkReady = cfg.SUPABASE_URL?.startsWith("https://") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
+if (sdkReady) {
+  $("loginBtn").disabled = true;
+  $("signupBtn").disabled = true;
+  $("authMessage").textContent = "Menghubungkan layanan akun…";
+  loadSupabaseSdk()
+    .then(() => initSupabase())
+    .catch((error) => {
+      $("loginBtn").disabled = false;
+      $("signupBtn").disabled = false;
       $("authScreen").classList.remove("hidden");
-      $("authMessage").textContent = "Layanan akun tidak berhasil dimuat. Coba periksa koneksi atau gunakan demo.";
-    }, { once: true });
-  }
-}
+      $("authMessage").textContent = `SDK akun gagal dimuat. Periksa koneksi lalu muat ulang. (${error.message})`;
+    });
+} else initSupabase();
