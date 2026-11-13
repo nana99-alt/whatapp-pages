@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const cfg = window.WHATAPP_CONFIG || {};
+const VAPID_PUBLIC_KEY = "BEWV8LHeRZn9MGpdHNDcCC0FQ1Sk5rw8Owdh5ehjEKP_2Ok8FsUF6bCglfx3O68M3bkE5VpKoOXu6UkkTa_fVuY";
 let supabase = null;
 let currentUser = null;
 let activeChat = null;
@@ -67,6 +68,75 @@ function stopRingtone() {
   clearInterval(ringtoneTimer); ringtoneTimer = null;
   clearInterval(ringVibrateTimer); ringVibrateTimer = null;
   if (navigator.vibrate) navigator.vibrate(0);
+}
+function base64UrlToBytes(value) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+async function updateCallNotificationStatus() {
+  const button = $("enableCallNotifications");
+  const status = $("callNotifyStatus");
+  if (!("Notification" in window) || !("PushManager" in window) || !("serviceWorker" in navigator)) {
+    status.textContent = "Browser ini tidak mendukung push. Gunakan Chrome terbaru dan pasang WhatApp ke layar utama.";
+    button.disabled = true; return;
+  }
+  if (!currentUser) { status.textContent = "Masuk untuk mendaftarkan perangkat ini."; button.textContent = "Aktifkan pemberitahuan"; button.disabled = true; return; }
+  if (Notification.permission === "denied") {
+    status.textContent = "Diblokir. Ubah izin notifikasi WhatApp melalui setelan situs Chrome.";
+    button.textContent = "Izin diblokir"; button.disabled = true;
+    return;
+  }
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription && Notification.permission === "granted") {
+      status.textContent = "Push aktif di perangkat ini. Panggilan masuk akan memberi notifikasi saat tab ditutup, selama Chrome mengizinkan notifikasi latar.";
+      button.textContent = "Matikan di perangkat ini"; button.disabled = false;
+    } else {
+      status.textContent = "Aktifkan push di perangkat ini. Izinkan notifikasi agar panggilan tetap memberi kabar saat tab ditutup.";
+      button.textContent = "Aktifkan panggilan latar"; button.disabled = false;
+    }
+  } catch (error) { status.textContent = `Push belum tersedia: ${error.message}`; button.disabled = true; }
+}
+async function showCallNotification(title, body, callId) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const options = { body, icon: "./icons/icon-192.png", tag: `whatapp-call-${callId}`, renotify: true, requireInteraction: true, silent: false, vibrate: [900, 450, 900, 450, 900], data: { url: new URL("./", location.href).href, callId } };
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification(title, options);
+  } else new Notification(title, options);
+}
+async function openCallFromPush(signalId) {
+  if (!signalId || !supabase || !currentUser) { if (signalId) sessionStorage.setItem("whatapp-pending-call-signal", signalId); return; }
+  const { data, error } = await supabase.from("call_signals").select("id,call_id,sender_id,receiver_id,kind,payload").eq("id", signalId).eq("receiver_id", currentUser.id).maybeSingle();
+  if (error) throw error;
+  if (data) await handleCallSignal(data);
+  else toast("Panggilan ini sudah tidak tersedia.");
+  sessionStorage.removeItem("whatapp-pending-call-signal");
+  const url = new URL(location.href); url.searchParams.delete("incoming_call"); history.replaceState({}, "", url.pathname + url.hash);
+}
+async function enableCallNotifications() {
+  if (!("Notification" in window) || !currentUser || !supabase) return updateCallNotificationStatus();
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      await subscription.unsubscribe();
+      const { error } = await supabase.from("call_push_subscriptions").delete().eq("endpoint", subscription.endpoint).eq("user_id", currentUser.id);
+      if (error) throw error;
+      toast("Pemberitahuan panggilan dimatikan di perangkat ini.");
+    } else {
+      const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+      if (permission !== "granted") { toast("Izinkan notifikasi WhatApp di pengaturan Chrome."); return; }
+      subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
+      const { error } = await supabase.from("call_push_subscriptions").upsert({ user_id: currentUser.id, endpoint: subscription.endpoint, subscription: subscription.toJSON(), updated_at: new Date().toISOString() }, { onConflict: "endpoint" });
+      if (error) { await subscription.unsubscribe(); throw error; }
+      toast("Panggilan latar aktif di perangkat ini. Coba uji dengan halaman ditutup.");
+      await showCallNotification("Panggilan latar aktif", "Perangkat ini terdaftar menerima pemberitahuan panggilan.", `test-${Date.now()}`);
+    }
+    await updateCallNotificationStatus();
+  } catch (error) { toast(`Izin notifikasi gagal: ${error.message}`); }
 }
 function showPage(page) {
   ["chatsPage", "updatesPage", "callsPage", "conversationPage"].forEach((id) => $(id).classList.add("hidden"));
@@ -253,6 +323,7 @@ async function subscribeToCallSignals() {
 async function handleCallSignal(signal) {
   if (!currentUser || signal.sender_id === currentUser.id) return;
   if (signal.kind === "offer") {
+    if (incomingCall?.call_id === signal.call_id) return;
     if (activeCall || incomingCall) { await sendCallSignal(signal.sender_id, signal.call_id, "busy"); return; }
     const { data } = await supabase.from("profiles").select("display_name,avatar_url").eq("id", signal.sender_id).maybeSingle();
     incomingCall = signal;
@@ -433,16 +504,25 @@ async function initSupabase() {
     $("mainScreen").classList.toggle("hidden", !currentUser);
     $("profileBtn").classList.toggle("hidden", !currentUser);
     $("authMessage").textContent = currentUser ? "" : "Masuk dengan akun Anda atau buat akun baru.";
-    if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCallSignals(); }
+    if (currentUser) {
+      await ensureProfile(); await loadPeople(); subscribeToMessages(); await subscribeToCallSignals(); updateCallNotificationStatus();
+      const pendingSignal = new URL(location.href).searchParams.get("incoming_call") || sessionStorage.getItem("whatapp-pending-call-signal");
+      if (pendingSignal) await openCallFromPush(pendingSignal);
+    }
     supabase.auth.onAuthStateChange((_event, nextSession) => {
       currentUser = nextSession?.user || null;
       $("authScreen").classList.toggle("hidden", !!currentUser);
       $("mainScreen").classList.toggle("hidden", !currentUser);
       $("profileBtn").classList.toggle("hidden", !currentUser);
-      if (currentUser) setTimeout(async () => { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCallSignals(); }, 0);
+      if (currentUser) setTimeout(async () => {
+        await ensureProfile(); await loadPeople(); subscribeToMessages(); await subscribeToCallSignals(); updateCallNotificationStatus();
+        const pendingSignal = new URL(location.href).searchParams.get("incoming_call") || sessionStorage.getItem("whatapp-pending-call-signal");
+        if (pendingSignal) await openCallFromPush(pendingSignal);
+      }, 0);
       else {
         if (callSignalsChannel) supabase.removeChannel(callSignalsChannel);
         callSignalsChannel = null; callSignalsReady = false; finishCall(false);
+        updateCallNotificationStatus();
         people = []; currentVirtualNumber = null; currentProfileName = ""; renderChats();
       }
     });
@@ -457,6 +537,7 @@ async function initSupabase() {
 }
 function openProfile() {
   if (!currentUser) return toast("Masuk ke akun WhatApp untuk membuka profil.");
+  updateCallNotificationStatus();
   $("profileError").classList.add("hidden");
   $("profileError").textContent = "";
   $("profileName").value = currentProfileName;
@@ -531,6 +612,7 @@ $("copyIdBtn").onclick = async () => {
   catch { toast(`ID WhatApp Anda: ${currentVirtualNumber}`); }
 };
 $("profileBtn").onclick = openProfile;
+$("enableCallNotifications").onclick = enableCallNotifications;
 $("profileForm").addEventListener("submit", saveProfile);
 $("closeProfile").onclick = () => $("profileDialog").close();
 $("profileDialog").addEventListener("click", (event) => { if (event.target === $("profileDialog")) $("profileDialog").close(); });
@@ -554,6 +636,9 @@ $("installBtn").onclick = async () => { if (!deferredInstallPrompt) return; defe
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); toast("WhatApp berhasil dipasang"); });
 if ("serviceWorker" in navigator) {
   let reloadedForControllerChange = false;
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "WHATAPP_OPEN_INCOMING_CALL") openCallFromPush(event.data.signalId).catch((error) => toast(`Panggilan tidak dapat dibuka: ${error.message}`));
+  });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (reloadedForControllerChange) return;
     reloadedForControllerChange = true;

@@ -107,6 +107,10 @@
       <label>ID WhatApp</label>
       <div class="profile-id-row"><code id="profileNumber">—</code><button id="copyProfileId" class="copy-id-btn" type="button">Salin</button></div>
       <p class="hint">ID ini untuk chat dalam aplikasi, bukan nomor telepon.</p>
+      <label for="enableCallNotifications">Pemberitahuan panggilan</label>
+      <p id="callNotifyStatus" class="profile-readonly">Memeriksa dukungan browser…</p>
+      <button id="enableCallNotifications" class="text-btn" type="button">Aktifkan panggilan latar</button>
+      <p class="hint">Push dapat muncul saat tab ditutup jika notifikasi Chrome dan baterai latar diizinkan. Mode Jangan Ganggu, hemat baterai, atau paksa berhenti dapat menunda/memblokir bunyi.</p>
       <p id="profileError" class="dialog-error hidden" role="alert"></p>
       <div class="dialog-actions"><button type="button" id="closeProfile" class="dialog-cancel">Tutup</button><button type="submit" id="saveProfile" class="primary-btn">Simpan nama</button></div>
     </form>
