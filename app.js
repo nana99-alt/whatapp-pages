@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const cfg = window.WHATAPP_CONFIG || {};
-let supabase = null;
+let supabaseClient = null;
 let currentUser = null;
 let activeChat = null;
 let realtimeChannel = null;
@@ -81,7 +81,7 @@ function renderMessages(messages = []) {
   container.scrollTop = container.scrollHeight;
 }
 async function loadMessages() {
-  if (!supabase || !currentUser || !activeChat) return;
+  if (!supabaseClient || !currentUser || !activeChat) return;
   if (activeChat.demo) {
     renderMessages([
       { sender_id: activeChat.id, body: "Hai! Apa kabar?", created_at: new Date().toISOString() },
@@ -89,14 +89,14 @@ async function loadMessages() {
     ]);
     return;
   }
-  const { data, error } = await supabase.from("messages").select("id,sender_id,receiver_id,body,attachment_url,attachment_type,created_at,read_at").or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`).order("created_at", { ascending: true }).limit(200);
+  const { data, error } = await supabaseClient.from("messages").select("id,sender_id,receiver_id,body,attachment_url,attachment_type,created_at,read_at").or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`).order("created_at", { ascending: true }).limit(200);
   if (error) return toast(error.message);
   renderMessages(data || []);
 }
 function subscribeToMessages() {
-  if (!supabase || !currentUser) return;
-  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
-  realtimeChannel = supabase.channel(`messages:${currentUser.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+  if (!supabaseClient || !currentUser) return;
+  if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+  realtimeChannel = supabaseClient.channel(`messages:${currentUser.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
     const message = payload.new;
     if (activeChat && (message.sender_id === activeChat.id || message.receiver_id === activeChat.id)) loadMessages();
     const person = people.find((p) => p.id === message.sender_id || p.id === message.receiver_id);
@@ -113,7 +113,7 @@ async function openChat(person) {
 }
 async function sendMessage(text, file = null) {
   if (!text.trim() && !file) return;
-  if (!supabase || !currentUser || !activeChat || activeChat.demo) {
+  if (!supabaseClient || !currentUser || !activeChat || activeChat.demo) {
     if (activeChat?.demo) toast("Mode demo tidak menyimpan pesan. Hubungkan Supabase terlebih dahulu.");
     return;
   }
@@ -122,12 +122,12 @@ async function sendMessage(text, file = null) {
   if (file) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
     const path = `${currentUser.id}/${Date.now()}-${safeName}`;
-    const upload = await supabase.storage.from("chat-media").upload(path, file, { upsert: false, contentType: file.type });
+    const upload = await supabaseClient.storage.from("chat-media").upload(path, file, { upsert: false, contentType: file.type });
     if (upload.error) return toast(upload.error.message);
-    attachment_url = supabase.storage.from("chat-media").getPublicUrl(path).data.publicUrl;
+    attachment_url = supabaseClient.storage.from("chat-media").getPublicUrl(path).data.publicUrl;
     attachment_type = file.type;
   }
-  const { error } = await supabase.from("messages").insert({ sender_id: currentUser.id, receiver_id: activeChat.id, body: text.trim() || "", attachment_url, attachment_type });
+  const { error } = await supabaseClient.from("messages").insert({ sender_id: currentUser.id, receiver_id: activeChat.id, body: text.trim() || "", attachment_url, attachment_type });
   if (error) return toast(error.message);
   $("messageInput").value = "";
   $("fileInput").value = "";
@@ -143,7 +143,7 @@ function showCallScreen(mode, person) {
   $("mainScreen").classList.add("hidden");
 }
 async function preparePeer(mode, person) {
-  if (!supabase || !currentUser || !person || person.demo) return null;
+  if (!supabaseClient || !currentUser || !person || person.demo) return null;
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
   $("localVideo").srcObject = localStream;
   $("localVideo").classList.toggle("hidden", mode !== "video");
@@ -152,7 +152,7 @@ async function preparePeer(mode, person) {
   peerConnection.ontrack = (event) => { $("remoteVideo").srcObject = event.streams[0]; $("remoteVideo").classList.toggle("hidden", mode !== "video"); $("callerAvatar").classList.add("hidden"); };
   peerConnection.onconnectionstatechange = () => { if (["connected", "completed"].includes(peerConnection.connectionState)) $("callStatus").textContent = "Terhubung"; };
   currentCallId = crypto.randomUUID();
-  callChannel = supabase.channel(`call:${currentCallId}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "call_signals", filter: `call_id=eq.${currentCallId}` }, async ({ new: signal }) => {
+  callChannel = supabaseClient.channel(`call:${currentCallId}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "call_signals", filter: `call_id=eq.${currentCallId}` }, async ({ new: signal }) => {
     if (signal.receiver_id !== currentUser.id) return;
     if (signal.kind === "answer" && peerConnection.signalingState !== "stable") await peerConnection.setRemoteDescription(signal.payload);
     if (signal.kind === "hangup") endCall(false);
@@ -167,15 +167,15 @@ async function startCall(mode) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await waitForIce(pc);
-    const { error } = await supabase.from("call_signals").insert({ call_id: currentCallId, sender_id: currentUser.id, receiver_id: activeChat.id, kind: "offer", payload: { ...pc.localDescription, mode } });
+    const { error } = await supabaseClient.from("call_signals").insert({ call_id: currentCallId, sender_id: currentUser.id, receiver_id: activeChat.id, kind: "offer", payload: { ...pc.localDescription, mode } });
     if (error) throw error;
     $("callStatus").textContent = "Menunggu jawaban...";
   } catch (error) { toast(error.message || "Kamera/mikrofon tidak tersedia"); endCall(false); }
 }
 function endCall(notify = true) {
-  if (supabase && currentCallId && currentUser && activeChat && notify) supabase.from("call_signals").insert({ call_id: currentCallId, sender_id: currentUser.id, receiver_id: activeChat.id, kind: "hangup", payload: {} });
+  if (supabaseClient && currentCallId && currentUser && activeChat && notify) supabaseClient.from("call_signals").insert({ call_id: currentCallId, sender_id: currentUser.id, receiver_id: activeChat.id, kind: "hangup", payload: {} });
   localStream?.getTracks().forEach((track) => track.stop());
-  if (callChannel && supabase) supabase.removeChannel(callChannel);
+  if (callChannel && supabaseClient) supabaseClient.removeChannel(callChannel);
   peerConnection?.close(); peerConnection = null; localStream = null; callChannel = null; currentCallId = null;
   $("remoteVideo").srcObject = null; $("localVideo").srcObject = null;
   $("remoteVideo").classList.add("hidden"); $("localVideo").classList.add("hidden"); $("callerAvatar").classList.remove("hidden");
@@ -195,14 +195,14 @@ async function acceptIncomingCall() {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     await waitForIce(pc);
-    const { error } = await supabase.from("call_signals").insert({ call_id: currentCallId, sender_id: currentUser.id, receiver_id: signal.sender_id, kind: "answer", payload: pc.localDescription });
+    const { error } = await supabaseClient.from("call_signals").insert({ call_id: currentCallId, sender_id: currentUser.id, receiver_id: signal.sender_id, kind: "answer", payload: pc.localDescription });
     if (error) throw error;
     $("callStatus").textContent = "Terhubung";
   } catch (error) { toast(error.message || "Panggilan gagal diterima"); endCall(false); }
 }
 function subscribeToCalls() {
-  if (!supabase || !currentUser) return;
-  supabase.channel(`incoming-calls:${currentUser.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "call_signals", filter: `receiver_id=eq.${currentUser.id}` }, ({ new: signal }) => {
+  if (!supabaseClient || !currentUser) return;
+  supabaseClient.channel(`incoming-calls:${currentUser.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "call_signals", filter: `receiver_id=eq.${currentUser.id}` }, ({ new: signal }) => {
     if (signal.kind !== "offer" || pendingIncomingCall) return;
     pendingIncomingCall = signal;
     $("incomingKind").textContent = signal.payload?.mode === "video" ? "Panggilan video WhatApp" : "Panggilan suara WhatApp";
@@ -211,20 +211,20 @@ function subscribeToCalls() {
 }
 window.addEventListener("nativeIncomingCall", async (event) => {
   const detail = event.detail || {};
-  if (!supabase || !currentUser || !detail.call_id) return;
-  const { data } = await supabase.from("call_signals").select("call_id,sender_id,receiver_id,kind,payload").eq("call_id", detail.call_id).eq("kind", "offer").limit(1).maybeSingle();
+  if (!supabaseClient || !currentUser || !detail.call_id) return;
+  const { data } = await supabaseClient.from("call_signals").select("call_id,sender_id,receiver_id,kind,payload").eq("call_id", detail.call_id).eq("kind", "offer").limit(1).maybeSingle();
   if (!data) return;
   pendingIncomingCall = data;
   $("incomingKind").textContent = detail.mode === "video" ? "Panggilan video WhatApp" : "Panggilan suara WhatApp";
   $("incomingScreen").classList.remove("hidden");
 });
 async function setupNativePush() {
-  if (pushReady || !supabase || !currentUser) return;
+  if (pushReady || !supabaseClient || !currentUser) return;
   const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
   if (!PushNotifications) return;
   pushReady = true;
   await PushNotifications.addListener("registration", async (token) => {
-    const { error } = await supabase.from("call_fcm_tokens").upsert({ token: token.value, user_id: currentUser.id, platform: "android", updated_at: new Date().toISOString() }, { onConflict: "token" });
+    const { error } = await supabaseClient.from("call_fcm_tokens").upsert({ token: token.value, user_id: currentUser.id, platform: "android", updated_at: new Date().toISOString() }, { onConflict: "token" });
     if (error) console.warn("FCM token sync failed", error.message);
   });
   await PushNotifications.addListener("registrationError", (error) => console.warn("FCM registration failed", error));
@@ -237,24 +237,24 @@ async function setupNativePush() {
   if (permission.receive === "granted") await PushNotifications.register();
 }
 async function ensureProfile() {
-  if (!supabase || !currentUser) return;
+  if (!supabaseClient || !currentUser) return;
   const name = currentUser.user_metadata?.display_name || currentUser.email?.split("@")[0] || "Pengguna";
-  const existing = await supabase.from("profiles").select("virtual_number").eq("id", currentUser.id).maybeSingle();
+  const existing = await supabaseClient.from("profiles").select("virtual_number").eq("id", currentUser.id).maybeSingle();
   let virtual_number = existing.data?.virtual_number;
   if (!virtual_number) {
     for (let attempt = 0; attempt < 5 && !virtual_number; attempt += 1) {
       const candidate = `WA-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const taken = await supabase.from("profiles").select("id").eq("virtual_number", candidate).maybeSingle();
+      const taken = await supabaseClient.from("profiles").select("id").eq("virtual_number", candidate).maybeSingle();
       if (!taken.data) virtual_number = candidate;
     }
   }
-  const saved = await supabase.from("profiles").upsert({ id: currentUser.id, display_name: name, virtual_number }, { onConflict: "id" }).select("virtual_number").single();
+  const saved = await supabaseClient.from("profiles").upsert({ id: currentUser.id, display_name: name, virtual_number }, { onConflict: "id" }).select("virtual_number").single();
   currentVirtualNumber = saved.data?.virtual_number || virtual_number;
   if ($("myNumber") && currentVirtualNumber) $("myNumber").textContent = `Nomor Anda: ${currentVirtualNumber}`;
 }
 async function loadPeople() {
-  if (!supabase || !currentUser) { people = demoPeople; renderChats(); return; }
-  const { data, error } = await supabase.from("profiles").select("id,display_name,avatar_url,virtual_number").neq("id", currentUser.id).order("display_name").limit(100);
+  if (!supabaseClient || !currentUser) { people = demoPeople; renderChats(); return; }
+  const { data, error } = await supabaseClient.from("profiles").select("id,display_name,avatar_url,virtual_number").neq("id", currentUser.id).order("display_name").limit(100);
   if (error) return toast(error.message);
   people = (data || []).map((p) => ({ id: p.id, name: p.display_name, avatar: p.avatar_url || "🙂", virtual_number: p.virtual_number, preview: p.virtual_number || "Mulai percakapan baru", status: "tersedia" }));
   renderChats();
@@ -263,12 +263,12 @@ async function initSupabase() {
   const ready = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_URL.includes("YOUR-PROJECT") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
   if (!ready) { people = demoPeople; renderChats(); $("authScreen").classList.remove("hidden"); return; }
   try {
-    supabase = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-    const { data: { session } } = await supabase.auth.getSession();
+    supabaseClient = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    const { data: { session } } = await supabaseClient.auth.getSession();
     currentUser = session?.user || null;
     $("authScreen").classList.toggle("hidden", !!currentUser);
     if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCalls(); await setupNativePush(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
-    supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
       try {
         currentUser = nextSession?.user || null;
         $("authScreen").classList.toggle("hidden", !!currentUser);
@@ -277,7 +277,7 @@ async function initSupabase() {
     });
   } catch (error) {
     console.error("Supabase gagal diinisialisasi", error);
-    supabase = null;
+    supabaseClient = null;
     people = demoPeople;
     renderChats();
     $("authScreen").classList.remove("hidden");
@@ -285,12 +285,12 @@ async function initSupabase() {
   }
 }
 async function auth(signup) {
-  if (!supabase) { $("authMessage").textContent = "Isi secret Supabase melalui www/config.js atau GitHub Actions terlebih dahulu."; return; }
+  if (!supabaseClient) { $("authMessage").textContent = "Isi secret Supabase melalui www/config.js atau GitHub Actions terlebih dahulu."; return; }
   const email = $("email").value.trim();
   const password = $("password").value;
   if (!email || password.length < 6) { $("authMessage").textContent = "Masukkan email dan kata sandi minimal 6 karakter."; return; }
   try {
-    const result = signup ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } }) : await supabase.auth.signInWithPassword({ email, password });
+    const result = signup ? await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } }) : await supabaseClient.auth.signInWithPassword({ email, password });
     $("authMessage").textContent = result.error ? result.error.message : (signup ? "Periksa email untuk verifikasi akun." : "Berhasil masuk.");
   } catch (error) { $("authMessage").textContent = error.message || "Login gagal. Periksa koneksi lalu coba lagi."; }
 }
@@ -302,7 +302,7 @@ const bindClick = (id, handler) => {
   if (element) element.addEventListener("click", handler);
 };
 bindClick("menuBtn", () => {
-  if (supabase && currentUser) supabase.auth.signOut().then(() => toast("Anda telah keluar"));
+  if (supabaseClient && currentUser) supabaseClient.auth.signOut().then(() => toast("Anda telah keluar"));
   else toast("Hubungkan Supabase untuk menu akun.");
 });
 bindClick("searchBtn", () => $("filterChats")?.focus());
@@ -335,7 +335,7 @@ $("fileInput").onchange = (e) => { const file = e.target.files[0]; if (file) sen
 $("newChatBtn").onclick = $("composeBtn").onclick = () => { $("filterChats").focus(); toast("Cari pengguna dari daftar profil."); };
 $("startCallFromList").onclick = () => startCall("voice");
 document.querySelectorAll("[data-call]").forEach((b) => b.onclick = () => startCall(b.dataset.call));
-$("menuBtn").onclick = async () => { if (supabase && currentUser) { await supabase.auth.signOut(); toast("Anda telah keluar"); } else toast("Hubungkan Supabase untuk menu akun."); };
+$("menuBtn").onclick = async () => { if (supabaseClient && currentUser) { await supabaseClient.auth.signOut(); toast("Anda telah keluar"); } else toast("Hubungkan Supabase untuk menu akun."); };
 $("searchBtn").onclick = () => $("filterChats").focus();
 $("demoBtn").onclick = () => { $("authScreen").classList.add("hidden"); people = demoPeople; renderChats(); toast("Mode demo aktif"); };
 $("loginBtn").onclick = () => auth(false);
