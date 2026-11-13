@@ -58,27 +58,19 @@
 
     <section id="updatesPage" class="page hidden">
       <div class="section-heading"><div><h2>Pembaruan</h2><span>Status teman Anda</span></div></div>
-      <div class="status-card"><div class="status-ring self-ring">＋</div><div><b>Status saya</b><small>Ketuk untuk menambahkan pembaruan</small></div></div>
-      <h3 class="subheading">Terbaru</h3>
-      <div class="status-card"><div class="status-ring"><span>👩🏻</span></div><div><b>Nadia</b><small>Baru saja</small></div></div>
-      <div class="status-card"><div class="status-ring"><span>🧑🏽</span></div><div><b>Rizky</b><small>12 menit yang lalu</small></div></div>
+      <p class="hint empty-state">Belum ada pembaruan.</p>
     </section>
 
     <section id="callsPage" class="page hidden">
       <div class="section-heading"><div><h2>Panggilan</h2><span>Riwayat panggilan</span></div><button class="round-add" id="startCallFromList">＋</button></div>
-      <div class="call-history">
-        <div class="history-avatar">👩🏻</div><div class="history-info"><b>Sarah</b><small>↙ Panggilan suara masuk</small></div><span class="history-time">09.42</span><button class="call-icon" data-call="voice">☎</button>
-      </div>
-      <div class="call-history">
-        <div class="history-avatar blue">🧑🏽</div><div class="history-info"><b>Rizky</b><small>↗ Panggilan video keluar</small></div><span class="history-time">Kemarin</span><button class="call-icon" data-call="video">▣</button>
-      </div>
+      <p class="hint empty-state">Belum ada riwayat panggilan.</p>
     </section>
 
     <section id="conversationPage" class="conversation hidden">
       <div class="chat-header">
         <button class="back-btn" id="backBtn">‹</button>
         <div class="avatar small-avatar" id="activeAvatar">👩🏻</div>
-        <div class="chat-person"><b id="activeName">Sarah</b><small id="activeStatus">online</small></div>
+        <div class="chat-person"><b id="activeName">Pengguna</b><small id="activeStatus">—</small></div>
         <button class="icon-btn" id="voiceCallBtn">☎</button>
         <button class="icon-btn" id="videoCallBtn">▣</button>
         <button class="icon-btn">⋮</button>
@@ -105,7 +97,7 @@
     <video id="remoteVideo" class="remote-video hidden" autoplay playsinline></video>
     <video id="localVideo" class="local-video hidden" autoplay muted playsinline></video>
     <div class="caller-avatar" id="callerAvatar">👩🏻</div>
-    <h2 id="callerName">Sarah</h2><p id="callStatus">Memanggil...</p>
+    <h2 id="callerName">Pengguna</h2><p id="callStatus">Memanggil...</p>
     <div class="call-controls">
       <button class="control-btn muted" id="muteBtn">♩<small>Bisukan</small></button>
       <button class="control-btn speaker" id="speakerBtn">◖<small>Speaker</small></button>
@@ -116,11 +108,11 @@
 
   <section id="incomingScreen" class="incoming-screen hidden">
     <div class="incoming-glow"></div><div class="incoming-avatar">👩🏻</div>
-    <p class="incoming-label">PANGGILAN MASUK</p><h2>Sarah</h2><p id="incomingKind">Panggilan suara WhatApp</p>
+    <p class="incoming-label">PANGGILAN MASUK</p><h2>Pengguna</h2><p id="incomingKind">Panggilan suara WhatApp</p>
     <div class="incoming-actions"><button id="declineBtn" class="decline">✕<small>Tolak</small></button><button id="acceptBtn" class="accept">☎<small>Terima</small></button></div>
   </section>
 </div>
 <div id="toast" class="toast"></div>
-<script src="app.js?v=auth-only-1"></script>
+<script src="app.js?v=auth-only-2"></script>
 </body>
 </html>
