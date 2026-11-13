@@ -14,6 +14,7 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
 </head>
 <body>
@@ -22,27 +23,26 @@
     <div class="brand">WhatApp</div>
     <div class="top-actions">
       <button class="install-btn hidden" id="installBtn">Pasang</button>
-      <button class="profile-btn hidden" id="profileBtn" type="button" aria-label="Buka profil saya" title="Profil saya">🙂</button>
       <button class="icon-btn" id="searchBtn" aria-label="Cari">⌕</button>
       <button class="icon-btn" id="menuBtn" aria-label="Menu">⋮</button>
     </div>
   </header>
 
-  <section id="authScreen" class="auth-screen">
+  <section id="authScreen" class="auth-screen hidden">
     <div class="auth-card">
       <div class="logo-mark">W</div>
       <h1>Selamat datang di WhatApp</h1>
       <p>Masuk untuk mulai mengobrol.</p>
-      <input id="email" type="email" placeholder="Alamat email" autocomplete="email" required>
-      <input id="password" type="password" placeholder="Kata sandi (minimal 6 karakter)" autocomplete="current-password" minlength="6" required>
+      <input id="email" type="email" placeholder="Alamat email">
+      <input id="password" type="password" placeholder="Kata sandi">
       <button class="primary-btn" id="loginBtn">Masuk</button>
       <button class="text-btn" id="signupBtn">Buat akun baru</button>
-      <p class="hint" id="authMessage">Masuk dengan akun Anda atau buat akun baru.</p>
+      <p class="hint" id="authMessage">Demo tampilan tetap bisa dicoba tanpa Supabase.</p>
+      <button class="outline-btn" id="demoBtn">Lihat demo</button>
     </div>
   </section>
 
-  <main id="mainScreen" class="hidden">
-    <button id="resumeCallBtn" class="call-restore hidden" type="button">Panggilan berlangsung · Kembali</button>
+  <main id="mainScreen">
     <nav class="tabs">
       <button class="tab active" data-tab="chats">CHAT</button>
       <button class="tab" data-tab="updates">PEMBARUAN</button>
@@ -50,7 +50,7 @@
     </nav>
 
     <section id="chatsPage" class="page">
-      <div class="section-heading"><div><h2>Pesan</h2><div class="contact-id-line"><span id="myNumber">ID kontak WhatApp · bukan nomor telepon</span><button id="copyIdBtn" class="copy-id-btn hidden" type="button">Salin ID</button></div></div><button class="round-add" id="newChatBtn" aria-label="Mulai obrolan baru">＋</button></div>
+      <div class="section-heading"><div><h2>Pesan</h2><span id="myNumber">Obrolan terbaru</span></div><button class="round-add" id="newChatBtn">＋</button></div>
       <div class="search-box"><span>⌕</span><input id="filterChats" placeholder="Cari nama atau pesan"></div>
       <div class="archive-row">▣　Diarsipkan <span>2</span></div>
       <div id="chatList" class="chat-list"></div>
@@ -59,24 +59,37 @@
 
     <section id="updatesPage" class="page hidden">
       <div class="section-heading"><div><h2>Pembaruan</h2><span>Status teman Anda</span></div></div>
-      <p class="hint empty-state">Belum ada pembaruan.</p>
+      <div class="status-card"><div class="status-ring self-ring">＋</div><div><b>Status saya</b><small>Ketuk untuk menambahkan pembaruan</small></div></div>
+      <h3 class="subheading">Terbaru</h3>
+      <div class="status-card"><div class="status-ring"><span>👩🏻</span></div><div><b>Nadia</b><small>Baru saja</small></div></div>
+      <div class="status-card"><div class="status-ring"><span>🧑🏽</span></div><div><b>Rizky</b><small>12 menit yang lalu</small></div></div>
     </section>
 
     <section id="callsPage" class="page hidden">
       <div class="section-heading"><div><h2>Panggilan</h2><span>Riwayat panggilan</span></div><button class="round-add" id="startCallFromList">＋</button></div>
-      <p class="hint empty-state">Riwayat panggilan belum tersedia.</p>
+      <div class="call-history">
+        <div class="history-avatar">👩🏻</div><div class="history-info"><b>Sarah</b><small>↙ Panggilan suara masuk</small></div><span class="history-time">09.42</span><button class="call-icon" data-call="voice">☎</button>
+      </div>
+      <div class="call-history">
+        <div class="history-avatar blue">🧑🏽</div><div class="history-info"><b>Rizky</b><small>↗ Panggilan video keluar</small></div><span class="history-time">Kemarin</span><button class="call-icon" data-call="video">▣</button>
+      </div>
     </section>
 
     <section id="conversationPage" class="conversation hidden">
       <div class="chat-header">
         <button class="back-btn" id="backBtn">‹</button>
         <div class="avatar small-avatar" id="activeAvatar">👩🏻</div>
-        <div class="chat-person"><b id="activeName"></b><small id="activeStatus">tersedia</small></div>
-        <button class="icon-btn" id="voiceCallBtn" aria-label="Mulai panggilan suara" title="Panggilan suara">☎</button>
-        <button class="icon-btn" id="videoCallBtn" aria-label="Mulai panggilan video" title="Panggilan video">▣</button>
+        <div class="chat-person"><b id="activeName">Sarah</b><small id="activeStatus">online</small></div>
+        <button class="icon-btn" id="voiceCallBtn">☎</button>
+        <button class="icon-btn" id="videoCallBtn">▣</button>
         <button class="icon-btn">⋮</button>
       </div>
-      <div class="messages" id="messages"></div>
+      <div class="messages" id="messages">
+        <div class="date-chip">HARI INI</div>
+        <div class="bubble received">Hai! Apa kabar?<span>09.40</span></div>
+        <div class="bubble sent">Baik, kamu bagaimana? <span>09.41　✓✓</span></div>
+        <div class="bubble received">Aku baik juga 😊<span>09.42</span></div>
+      </div>
       <div class="composer">
         <button class="attach-btn" id="attachBtn">＋</button>
         <input id="messageInput" placeholder="Ketik pesan" autocomplete="off">
@@ -86,58 +99,14 @@
       <input type="file" id="fileInput" accept="image/*,video/*" hidden>
     </section>
   </main>
-  <dialog id="newChatDialog" class="contact-dialog" aria-labelledby="newChatTitle">
-    <form id="newChatForm">
-      <h2 id="newChatTitle">Mulai obrolan</h2>
-      <p id="newChatHelp">Masukkan ID WhatApp orang yang ingin Anda hubungi.</p>
-      <label for="contactInput" id="contactLabel">ID WhatApp</label>
-      <input id="contactInput" type="text" maxlength="80" autocomplete="off" placeholder="WA-1234-5678" required>
-      <p id="newChatError" class="dialog-error hidden" role="alert"></p>
-      <div class="dialog-actions"><button type="button" id="cancelNewChat" class="dialog-cancel">Batal</button><button type="submit" id="confirmNewChat" class="primary-btn">Mulai chat</button></div>
-    </form>
-  </dialog>
-  <dialog id="profileDialog" class="contact-dialog" aria-labelledby="profileTitle">
-    <form id="profileForm">
-      <h2 id="profileTitle">Profil saya</h2>
-      <p>Informasi akun WhatApp Anda.</p>
-      <label for="profileName">Nama tampilan</label>
-      <input id="profileName" type="text" maxlength="40" autocomplete="nickname" required>
-      <label>Email akun</label>
-      <p id="profileEmail" class="profile-readonly"></p>
-      <label>ID WhatApp</label>
-      <div class="profile-id-row"><code id="profileNumber">—</code><button id="copyProfileId" class="copy-id-btn" type="button">Salin</button></div>
-      <p class="hint">ID ini untuk chat dalam aplikasi, bukan nomor telepon.</p>
-      <label for="enableCallNotifications">Pemberitahuan panggilan</label>
-      <p id="callNotifyStatus" class="profile-readonly">Memeriksa dukungan browser…</p>
-      <button id="enableCallNotifications" class="text-btn" type="button">Aktifkan panggilan latar</button>
-      <p class="hint">Saat panggilan masuk dan WhatApp terbuka, aplikasi akan membunyikan nada dan mencoba menggetarkan perangkat. Saat app ditutup, bunyi/getar mengikuti setelan notifikasi Android; Mode Jangan Ganggu, hemat baterai, atau paksa berhenti dapat menunda/memblokirnya.</p>
-      <p id="profileError" class="dialog-error hidden" role="alert"></p>
-      <div class="dialog-actions"><button type="button" id="closeProfile" class="dialog-cancel">Tutup</button><button type="submit" id="saveProfile" class="primary-btn">Simpan nama</button></div>
-    </form>
-  </dialog>
-  <dialog id="pushWelcomeDialog" class="contact-dialog push-welcome" aria-labelledby="pushWelcomeTitle">
-    <section>
-      <div class="push-bell" aria-hidden="true">🔔</div>
-      <h2 id="pushWelcomeTitle">Aktifkan panggilan latar?</h2>
-      <p>Izinkan notifikasi agar HP ini dapat menerima pemberitahuan panggilan saat WhatApp tidak sedang dibuka. Android akan meminta persetujuan notifikasi satu kali.</p>
-      <p class="hint">Pilihan ini hanya mendaftarkan perangkat ini untuk akun Anda. Anda bisa mengubahnya nanti di Profil.</p>
-      <div class="push-welcome-actions">
-        <button type="button" id="pushWelcomeLater" class="dialog-cancel">Nanti</button>
-        <button type="button" id="pushWelcomeEnable" class="primary-btn">Aktifkan notifikasi</button>
-      </div>
-    </section>
-  </dialog>
 
   <section id="callScreen" class="call-screen hidden">
     <div class="call-wallpaper"></div>
-    <video id="remoteVideo" class="call-video hidden" autoplay playsinline></video>
-    <video id="localVideo" class="call-local-video hidden" autoplay playsinline muted></video>
-    <audio id="remoteAudio" autoplay></audio>
     <div class="call-top"><span id="callTypeLabel">Panggilan suara</span><button id="minimizeCall">⌄</button></div>
     <video id="remoteVideo" class="remote-video hidden" autoplay playsinline></video>
     <video id="localVideo" class="local-video hidden" autoplay muted playsinline></video>
     <div class="caller-avatar" id="callerAvatar">👩🏻</div>
-    <h2 id="callerName"></h2><p id="callStatus">Panggilan belum tersedia</p>
+    <h2 id="callerName">Sarah</h2><p id="callStatus">Memanggil...</p>
     <div class="call-controls">
       <button class="control-btn muted" id="muteBtn">♩<small>Bisukan</small></button>
       <button class="control-btn speaker" id="speakerBtn">◖<small>Speaker</small></button>
@@ -147,8 +116,8 @@
   </section>
 
   <section id="incomingScreen" class="incoming-screen hidden">
-    <div class="incoming-glow"></div><div class="incoming-avatar">☎</div>
-    <p class="incoming-label">PANGGILAN MASUK</p><h2></h2><p id="incomingKind">Panggilan suara WhatApp</p>
+    <div class="incoming-glow"></div><div class="incoming-avatar">👩🏻</div>
+    <p class="incoming-label">PANGGILAN MASUK</p><h2>Sarah</h2><p id="incomingKind">Panggilan suara WhatApp</p>
     <div class="incoming-actions"><button id="declineBtn" class="decline">✕<small>Tolak</small></button><button id="acceptBtn" class="accept">☎<small>Terima</small></button></div>
   </section>
 </div>
