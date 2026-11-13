@@ -262,24 +262,37 @@ async function loadPeople() {
 async function initSupabase() {
   const ready = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_URL.includes("YOUR-PROJECT") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
   if (!ready) { people = demoPeople; renderChats(); $("authScreen").classList.remove("hidden"); return; }
-  supabase = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  const { data: { session } } = await supabase.auth.getSession();
-  currentUser = session?.user || null;
-  $("authScreen").classList.toggle("hidden", !!currentUser);
-  if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCalls(); await setupNativePush(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
-  supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-    currentUser = nextSession?.user || null;
+  try {
+    supabase = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    const { data: { session } } = await supabase.auth.getSession();
+    currentUser = session?.user || null;
     $("authScreen").classList.toggle("hidden", !!currentUser);
-    if (currentUser) { pushReady = false; await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCalls(); await setupNativePush(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
-  });
+    if (currentUser) { await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCalls(); await setupNativePush(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
+    supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      try {
+        currentUser = nextSession?.user || null;
+        $("authScreen").classList.toggle("hidden", !!currentUser);
+        if (currentUser) { pushReady = false; await ensureProfile(); await loadPeople(); subscribeToMessages(); subscribeToCalls(); await setupNativePush(); toast(`Nomor Anda: ${currentVirtualNumber}`); }
+      } catch (error) { console.error("Gagal memuat sesi pengguna", error); toast(error.message || "Sesi pengguna gagal dimuat"); }
+    });
+  } catch (error) {
+    console.error("Supabase gagal diinisialisasi", error);
+    supabase = null;
+    people = demoPeople;
+    renderChats();
+    $("authScreen").classList.remove("hidden");
+    $("authMessage").textContent = error.message || "Koneksi login gagal. Coba muat ulang halaman.";
+  }
 }
 async function auth(signup) {
   if (!supabase) { $("authMessage").textContent = "Isi secret Supabase melalui www/config.js atau GitHub Actions terlebih dahulu."; return; }
   const email = $("email").value.trim();
   const password = $("password").value;
   if (!email || password.length < 6) { $("authMessage").textContent = "Masukkan email dan kata sandi minimal 6 karakter."; return; }
-  const result = signup ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } }) : await supabase.auth.signInWithPassword({ email, password });
-  $("authMessage").textContent = result.error ? result.error.message : (signup ? "Periksa email untuk verifikasi akun." : "Berhasil masuk.");
+  try {
+    const result = signup ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } }) : await supabase.auth.signInWithPassword({ email, password });
+    $("authMessage").textContent = result.error ? result.error.message : (signup ? "Periksa email untuk verifikasi akun." : "Berhasil masuk.");
+  } catch (error) { $("authMessage").textContent = error.message || "Login gagal. Periksa koneksi lalu coba lagi."; }
 }
 
 // Pasang aksi dasar lebih dulu agar satu elemen opsional yang bermasalah tidak
