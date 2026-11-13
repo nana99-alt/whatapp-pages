@@ -360,7 +360,7 @@ window.addEventListener("appinstalled", () => {
   $("installBtn").classList.add("hidden");
   toast("WhatApp berhasil dipasang");
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=bd3c5ef").catch(() => {}));
 
 renderChats();
 initSupabase();
