@@ -15,13 +15,6 @@ let currentCallId = null;
 let pendingIncomingCall = null;
 let pushReady = false;
 
-const demoPeople = [
-  { id: "demo-sarah", name: "Sarah", avatar: "👩🏻", preview: "Aku baik juga 😊", time: "09.42", unread: 2, status: "online", demo: true },
-  { id: "demo-rizky", name: "Rizky", avatar: "🧑🏽", preview: "Oke, sampai nanti!", time: "08.15", unread: 0, status: "terakhir dilihat 08.15", demo: true },
-  { id: "demo-nadia", name: "Nadia", avatar: "👩🏼", preview: "Foto sudah aku kirim", time: "Kemarin", unread: 0, status: "online", demo: true },
-  { id: "demo-andi", name: "Andi", avatar: "👨🏻", preview: "Terima kasih banyak", time: "Kemarin", unread: 0, status: "terakhir dilihat kemarin", demo: true }
-];
-
 function toast(message) {
   const el = $("toast");
   el.textContent = message;
@@ -82,13 +75,6 @@ function renderMessages(messages = []) {
 }
 async function loadMessages() {
   if (!supabaseClient || !currentUser || !activeChat) return;
-  if (activeChat.demo) {
-    renderMessages([
-      { sender_id: activeChat.id, body: "Hai! Apa kabar?", created_at: new Date().toISOString() },
-      { sender_id: currentUser.id, body: "Mode demo aktif — hubungkan Supabase untuk mengirim pesan.", created_at: new Date().toISOString() }
-    ]);
-    return;
-  }
   const { data, error } = await supabaseClient.from("messages").select("id,sender_id,receiver_id,body,attachment_url,attachment_type,created_at,read_at").or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`).order("created_at", { ascending: true }).limit(200);
   if (error) return toast(error.message);
   renderMessages(data || []);
@@ -113,10 +99,7 @@ async function openChat(person) {
 }
 async function sendMessage(text, file = null) {
   if (!text.trim() && !file) return;
-  if (!supabaseClient || !currentUser || !activeChat || activeChat.demo) {
-    if (activeChat?.demo) toast("Mode demo tidak menyimpan pesan. Hubungkan Supabase terlebih dahulu.");
-    return;
-  }
+  if (!supabaseClient || !currentUser || !activeChat) return;
   let attachment_url = null;
   let attachment_type = null;
   if (file) {
@@ -143,7 +126,7 @@ function showCallScreen(mode, person) {
   $("mainScreen").classList.add("hidden");
 }
 async function preparePeer(mode, person) {
-  if (!supabaseClient || !currentUser || !person || person.demo) return null;
+  if (!supabaseClient || !currentUser || !person) return null;
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
   $("localVideo").srcObject = localStream;
   $("localVideo").classList.toggle("hidden", mode !== "video");
@@ -160,7 +143,7 @@ async function preparePeer(mode, person) {
   return peerConnection;
 }
 async function startCall(mode) {
-  if (!activeChat || activeChat.demo) return toast("Pilih pengguna yang sudah terdaftar untuk menelepon.");
+  if (!activeChat) return toast("Pilih pengguna yang sudah terdaftar untuk menelepon.");
   try {
     showCallScreen(mode, activeChat);
     const pc = await preparePeer(mode, activeChat);
@@ -253,7 +236,7 @@ async function ensureProfile() {
   if ($("myNumber") && currentVirtualNumber) $("myNumber").textContent = `Nomor Anda: ${currentVirtualNumber}`;
 }
 async function loadPeople() {
-  if (!supabaseClient || !currentUser) { people = demoPeople; renderChats(); return; }
+  if (!supabaseClient || !currentUser) { people = []; renderChats(); return; }
   const { data, error } = await supabaseClient.from("profiles").select("id,display_name,avatar_url,virtual_number").neq("id", currentUser.id).order("display_name").limit(100);
   if (error) return toast(error.message);
   people = (data || []).map((p) => ({ id: p.id, name: p.display_name, avatar: p.avatar_url || "🙂", virtual_number: p.virtual_number, preview: p.virtual_number || "Mulai percakapan baru", status: "tersedia" }));
@@ -261,7 +244,7 @@ async function loadPeople() {
 }
 async function initSupabase() {
   const ready = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_URL.includes("YOUR-PROJECT") && cfg.SUPABASE_ANON_KEY && !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
-  if (!ready) { people = demoPeople; renderChats(); $("authScreen").classList.remove("hidden"); return; }
+  if (!ready) { people = []; renderChats(); $("authScreen").classList.remove("hidden"); return; }
   try {
     supabaseClient = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
     const { data: { session } } = await supabaseClient.auth.getSession();
@@ -278,7 +261,7 @@ async function initSupabase() {
   } catch (error) {
     console.error("Supabase gagal diinisialisasi", error);
     supabaseClient = null;
-    people = demoPeople;
+    people = [];
     renderChats();
     $("authScreen").classList.remove("hidden");
     $("authMessage").textContent = error.message || "Koneksi login gagal. Coba muat ulang halaman.";
@@ -314,7 +297,7 @@ document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click",
   showPage({ chats: "chatsPage", updates: "updatesPage", calls: "callsPage" }[btn.dataset.tab]);
   if (btn.dataset.tab === "chats") renderChats($("filterChats")?.value || "");
 }));
-if (!people.length) { people = demoPeople; renderChats(); }
+if (!people.length) renderChats();
 
 document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => { document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active")); btn.classList.add("active"); showPage({ chats: "chatsPage", updates: "updatesPage", calls: "callsPage" }[btn.dataset.tab]); }));
 $("filterChats").addEventListener("input", (e) => renderChats(e.target.value));
@@ -337,7 +320,6 @@ $("startCallFromList").onclick = () => startCall("voice");
 document.querySelectorAll("[data-call]").forEach((b) => b.onclick = () => startCall(b.dataset.call));
 $("menuBtn").onclick = async () => { if (supabaseClient && currentUser) { await supabaseClient.auth.signOut(); toast("Anda telah keluar"); } else toast("Hubungkan Supabase untuk menu akun."); };
 $("searchBtn").onclick = () => $("filterChats").focus();
-$("demoBtn").onclick = () => { $("authScreen").classList.add("hidden"); people = demoPeople; renderChats(); toast("Mode demo aktif"); };
 $("loginBtn").onclick = () => auth(false);
 $("signupBtn").onclick = () => auth(true);
 
