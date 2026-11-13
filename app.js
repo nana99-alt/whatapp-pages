@@ -282,6 +282,27 @@ async function auth(signup) {
   $("authMessage").textContent = result.error ? result.error.message : (signup ? "Periksa email untuk verifikasi akun." : "Berhasil masuk.");
 }
 
+// Pasang aksi dasar lebih dulu agar satu elemen opsional yang bermasalah tidak
+// menghentikan seluruh interaksi halaman.
+const bindClick = (id, handler) => {
+  const element = $(id);
+  if (element) element.addEventListener("click", handler);
+};
+bindClick("menuBtn", () => {
+  if (supabase && currentUser) supabase.auth.signOut().then(() => toast("Anda telah keluar"));
+  else toast("Hubungkan Supabase untuk menu akun.");
+});
+bindClick("searchBtn", () => $("filterChats")?.focus());
+bindClick("newChatBtn", () => { $("filterChats")?.focus(); toast("Cari pengguna dari daftar profil."); });
+bindClick("composeBtn", () => { $("filterChats")?.focus(); toast("Cari pengguna dari daftar profil."); });
+document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
+  btn.classList.add("active");
+  showPage({ chats: "chatsPage", updates: "updatesPage", calls: "callsPage" }[btn.dataset.tab]);
+  if (btn.dataset.tab === "chats") renderChats($("filterChats")?.value || "");
+}));
+if (!people.length) { people = demoPeople; renderChats(); }
+
 document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => { document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active")); btn.classList.add("active"); showPage({ chats: "chatsPage", updates: "updatesPage", calls: "callsPage" }[btn.dataset.tab]); }));
 $("filterChats").addEventListener("input", (e) => renderChats(e.target.value));
 $("backBtn").onclick = () => { showPage("chatsPage"); document.querySelector('[data-tab="chats"]').click(); };
