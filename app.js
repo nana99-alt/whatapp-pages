@@ -209,6 +209,15 @@ function subscribeToCalls() {
     $("incomingScreen").classList.remove("hidden");
   }).subscribe();
 }
+window.addEventListener("nativeIncomingCall", async (event) => {
+  const detail = event.detail || {};
+  if (!supabase || !currentUser || !detail.call_id) return;
+  const { data } = await supabase.from("call_signals").select("call_id,sender_id,receiver_id,kind,payload").eq("call_id", detail.call_id).eq("kind", "offer").limit(1).maybeSingle();
+  if (!data) return;
+  pendingIncomingCall = data;
+  $("incomingKind").textContent = detail.mode === "video" ? "Panggilan video WhatApp" : "Panggilan suara WhatApp";
+  $("incomingScreen").classList.remove("hidden");
+});
 async function setupNativePush() {
   if (pushReady || !supabase || !currentUser) return;
   const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
