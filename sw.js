@@ -1,4 +1,4 @@
-const CACHE_NAME = "whatapp-shell-v11";
+const CACHE_NAME = "whatapp-shell-v12";
 const APP_SHELL = [
   "./",
   "./index.html",

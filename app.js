@@ -30,38 +30,39 @@ function toast(message) {
 }
 function unlockRingtoneAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
+  if (!AudioContextClass) return Promise.resolve(false);
   try {
     ringAudioContext ||= new AudioContextClass();
-    if (ringAudioContext.state === "suspended") ringAudioContext.resume().catch(() => {});
-  } catch (error) { console.warn("Ringtone audio unavailable", error); }
+    return ringAudioContext.state === "suspended" ? ringAudioContext.resume().then(() => ringAudioContext.state === "running").catch((error) => { console.warn("Ringtone audio resume failed", error); return false; }) : Promise.resolve(ringAudioContext.state === "running");
+  } catch (error) { console.warn("Ringtone audio unavailable", error); return Promise.resolve(false); }
 }
 function playRingtonePulse() {
   if (!incomingCall || !ringAudioContext || ringAudioContext.state !== "running") return;
   const now = ringAudioContext.currentTime;
   const gain = ringAudioContext.createGain();
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(0.12, now + 0.04);
-  gain.gain.setValueAtTime(0.12, now + 0.48);
-  gain.gain.linearRampToValueAtTime(0.0001, now + 0.58);
+  gain.gain.setValueAtTime(0.85, now);
   gain.connect(ringAudioContext.destination);
-  [440, 554].forEach((frequency) => {
+  [{ at: 0, frequency: 660 }, { at: 0.42, frequency: 880 }, { at: 1.05, frequency: 660 }, { at: 1.47, frequency: 880 }].forEach(({ at, frequency }) => {
     const oscillator = ringAudioContext.createOscillator();
-    oscillator.type = "sine"; oscillator.frequency.setValueAtTime(frequency, now);
-    oscillator.connect(gain); oscillator.start(now); oscillator.stop(now + 0.6);
+    oscillator.type = "sine"; oscillator.frequency.setValueAtTime(frequency, now + at);
+    const tone = ringAudioContext.createGain();
+    tone.gain.setValueAtTime(0.0001, now + at);
+    tone.gain.linearRampToValueAtTime(0.32, now + at + 0.035);
+    tone.gain.setValueAtTime(0.32, now + at + 0.27);
+    tone.gain.linearRampToValueAtTime(0.0001, now + at + 0.34);
+    oscillator.connect(tone); tone.connect(gain); oscillator.start(now + at); oscillator.stop(now + at + 0.36);
   });
 }
 async function startRingtone() {
   stopRingtone();
   if (navigator.vibrate) {
-    navigator.vibrate([650, 350, 650]);
-    ringVibrateTimer = setInterval(() => navigator.vibrate([650, 350, 650]), 2400);
+    try { navigator.vibrate([700, 350, 700, 350, 700]); ringVibrateTimer = setInterval(() => navigator.vibrate([700, 350, 700, 350, 700]), 2800); }
+    catch (error) { console.warn("Call vibration unavailable", error); }
   }
-  unlockRingtoneAudio();
   try {
-    if (ringAudioContext?.state === "suspended") await ringAudioContext.resume();
+    await unlockRingtoneAudio();
     playRingtonePulse();
-    ringtoneTimer = setInterval(playRingtonePulse, 2400);
+    ringtoneTimer = setInterval(playRingtonePulse, 2800);
   } catch (error) { console.warn("Could not start incoming-call ringtone", error); }
 }
 function stopRingtone() {
@@ -116,6 +117,37 @@ async function openCallFromPush(signalId) {
   sessionStorage.removeItem("whatapp-pending-call-signal");
   const url = new URL(location.href); url.searchParams.delete("incoming_call"); history.replaceState({}, "", url.pathname + url.hash);
 }
+function pushOnboardingKey() { return `whatapp-push-onboarding:${currentUser?.id || ""}`; }
+async function savePushSubscription(subscription) {
+  const { error } = await supabase.from("call_push_subscriptions").upsert({ user_id: currentUser.id, endpoint: subscription.endpoint, subscription: subscription.toJSON(), updated_at: new Date().toISOString() }, { onConflict: "endpoint" });
+  if (error) throw error;
+}
+async function activatePushSubscription() {
+  if (!currentUser || !supabase) throw new Error("Masuk terlebih dahulu.");
+  const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("Izin notifikasi tidak diberikan.");
+  const registration = await navigator.serviceWorker.ready;
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
+  await savePushSubscription(subscription);
+  localStorage.setItem(pushOnboardingKey(), "active");
+  return subscription;
+}
+async function maybeOfferPushOnFirstLogin() {
+  if (!currentUser || !supabase || !("Notification" in window) || !("PushManager" in window) || !("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription && Notification.permission === "granted") {
+      await savePushSubscription(subscription);
+      localStorage.setItem(pushOnboardingKey(), "active");
+      return;
+    }
+    if (Notification.permission === "denied" || localStorage.getItem(pushOnboardingKey())) return;
+    const dialog = $("pushWelcomeDialog");
+    if (!dialog.open) dialog.showModal();
+  } catch (error) { console.warn("Push onboarding unavailable", error); }
+}
 async function enableCallNotifications() {
   if (!("Notification" in window) || !currentUser || !supabase) return updateCallNotificationStatus();
   try {
@@ -125,13 +157,11 @@ async function enableCallNotifications() {
       await subscription.unsubscribe();
       const { error } = await supabase.from("call_push_subscriptions").delete().eq("endpoint", subscription.endpoint).eq("user_id", currentUser.id);
       if (error) throw error;
+      localStorage.setItem(pushOnboardingKey(), "deferred");
       toast("Pemberitahuan panggilan dimatikan di perangkat ini.");
     } else {
-      const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-      if (permission !== "granted") { toast("Izinkan notifikasi WhatApp di pengaturan Chrome."); return; }
-      subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
-      const { error } = await supabase.from("call_push_subscriptions").upsert({ user_id: currentUser.id, endpoint: subscription.endpoint, subscription: subscription.toJSON(), updated_at: new Date().toISOString() }, { onConflict: "endpoint" });
-      if (error) { await subscription.unsubscribe(); throw error; }
+      try { await activatePushSubscription(); }
+      catch (error) { toast(`Izin notifikasi gagal: ${error.message}`); return; }
       toast("Panggilan latar aktif di perangkat ini. Coba uji dengan halaman ditutup.");
       await showCallNotification("Panggilan latar aktif", "Perangkat ini terdaftar menerima pemberitahuan panggilan.", `test-${Date.now()}`);
     }
@@ -505,7 +535,7 @@ async function initSupabase() {
     $("profileBtn").classList.toggle("hidden", !currentUser);
     $("authMessage").textContent = currentUser ? "" : "Masuk dengan akun Anda atau buat akun baru.";
     if (currentUser) {
-      await ensureProfile(); await loadPeople(); subscribeToMessages(); await subscribeToCallSignals(); updateCallNotificationStatus();
+      await ensureProfile(); await loadPeople(); subscribeToMessages(); await subscribeToCallSignals(); updateCallNotificationStatus(); await maybeOfferPushOnFirstLogin();
       const pendingSignal = new URL(location.href).searchParams.get("incoming_call") || sessionStorage.getItem("whatapp-pending-call-signal");
       if (pendingSignal) await openCallFromPush(pendingSignal);
     }
@@ -515,7 +545,7 @@ async function initSupabase() {
       $("mainScreen").classList.toggle("hidden", !currentUser);
       $("profileBtn").classList.toggle("hidden", !currentUser);
       if (currentUser) setTimeout(async () => {
-        await ensureProfile(); await loadPeople(); subscribeToMessages(); await subscribeToCallSignals(); updateCallNotificationStatus();
+        await ensureProfile(); await loadPeople(); subscribeToMessages(); await subscribeToCallSignals(); updateCallNotificationStatus(); await maybeOfferPushOnFirstLogin();
         const pendingSignal = new URL(location.href).searchParams.get("incoming_call") || sessionStorage.getItem("whatapp-pending-call-signal");
         if (pendingSignal) await openCallFromPush(pendingSignal);
       }, 0);
@@ -613,6 +643,21 @@ $("copyIdBtn").onclick = async () => {
 };
 $("profileBtn").onclick = openProfile;
 $("enableCallNotifications").onclick = enableCallNotifications;
+$("pushWelcomeEnable").onclick = async () => {
+  const button = $("pushWelcomeEnable"); button.disabled = true;
+  try {
+    await activatePushSubscription();
+    $("pushWelcomeDialog").close();
+    await updateCallNotificationStatus();
+    await showCallNotification("Panggilan latar aktif", "Perangkat ini siap menerima pemberitahuan panggilan.", `test-${Date.now()}`);
+    toast("Notifikasi panggilan aktif di perangkat ini.");
+  } catch (error) {
+    toast(`Belum aktif: ${error.message} Buka Profil untuk mencoba lagi.`);
+  } finally { button.disabled = false; }
+};
+$("pushWelcomeLater").onclick = () => { localStorage.setItem(pushOnboardingKey(), "deferred"); $("pushWelcomeDialog").close(); };
+$("pushWelcomeDialog").addEventListener("cancel", (event) => { event.preventDefault(); localStorage.setItem(pushOnboardingKey(), "deferred"); $("pushWelcomeDialog").close(); });
+$("pushWelcomeDialog").addEventListener("click", (event) => { if (event.target === $("pushWelcomeDialog")) { localStorage.setItem(pushOnboardingKey(), "deferred"); $("pushWelcomeDialog").close(); } });
 $("profileForm").addEventListener("submit", saveProfile);
 $("closeProfile").onclick = () => $("profileDialog").close();
 $("profileDialog").addEventListener("click", (event) => { if (event.target === $("profileDialog")) $("profileDialog").close(); });
@@ -633,7 +678,7 @@ $("searchBtn").onclick = () => { $("filterChats").focus(); $("filterChats").scro
 $("loginBtn").onclick = () => auth(false); $("signupBtn").onclick = () => auth(true);
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; $("installBtn").classList.remove("hidden"); });
 $("installBtn").onclick = async () => { if (!deferredInstallPrompt) return; deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); };
-window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); toast("WhatApp berhasil dipasang"); });
+window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; $("installBtn").classList.add("hidden"); toast("WhatApp berhasil dipasang"); if (currentUser) maybeOfferPushOnFirstLogin(); });
 if ("serviceWorker" in navigator) {
   let reloadedForControllerChange = false;
   navigator.serviceWorker.addEventListener("message", (event) => {

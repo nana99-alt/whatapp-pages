@@ -110,10 +110,22 @@
       <label for="enableCallNotifications">Pemberitahuan panggilan</label>
       <p id="callNotifyStatus" class="profile-readonly">Memeriksa dukungan browser…</p>
       <button id="enableCallNotifications" class="text-btn" type="button">Aktifkan panggilan latar</button>
-      <p class="hint">Push dapat muncul saat tab ditutup jika notifikasi Chrome dan baterai latar diizinkan. Mode Jangan Ganggu, hemat baterai, atau paksa berhenti dapat menunda/memblokir bunyi.</p>
+      <p class="hint">Saat panggilan masuk dan WhatApp terbuka, aplikasi akan membunyikan nada dan mencoba menggetarkan perangkat. Saat app ditutup, bunyi/getar mengikuti setelan notifikasi Android; Mode Jangan Ganggu, hemat baterai, atau paksa berhenti dapat menunda/memblokirnya.</p>
       <p id="profileError" class="dialog-error hidden" role="alert"></p>
       <div class="dialog-actions"><button type="button" id="closeProfile" class="dialog-cancel">Tutup</button><button type="submit" id="saveProfile" class="primary-btn">Simpan nama</button></div>
     </form>
+  </dialog>
+  <dialog id="pushWelcomeDialog" class="contact-dialog push-welcome" aria-labelledby="pushWelcomeTitle">
+    <section>
+      <div class="push-bell" aria-hidden="true">🔔</div>
+      <h2 id="pushWelcomeTitle">Aktifkan panggilan latar?</h2>
+      <p>Izinkan notifikasi agar HP ini dapat menerima pemberitahuan panggilan saat WhatApp tidak sedang dibuka. Android akan meminta persetujuan notifikasi satu kali.</p>
+      <p class="hint">Pilihan ini hanya mendaftarkan perangkat ini untuk akun Anda. Anda bisa mengubahnya nanti di Profil.</p>
+      <div class="push-welcome-actions">
+        <button type="button" id="pushWelcomeLater" class="dialog-cancel">Nanti</button>
+        <button type="button" id="pushWelcomeEnable" class="primary-btn">Aktifkan notifikasi</button>
+      </div>
+    </section>
   </dialog>
 
   <section id="callScreen" class="call-screen hidden">
